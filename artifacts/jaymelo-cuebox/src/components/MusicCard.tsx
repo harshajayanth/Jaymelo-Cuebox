@@ -41,8 +41,8 @@ export function MusicCard({ track, project, index }: MusicCardProps) {
   const handleDownload = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (isDisabled || !track.downloadable) return;
-    const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, "");
-    const url = `${baseUrl}/tunes/${project.folder}/${track.file}`;
+
+    const url = `/tunes/${project.folder}/${encodeURIComponent(track.file)}`;
     const a = document.createElement("a");
     a.href = url;
     a.download = track.file;

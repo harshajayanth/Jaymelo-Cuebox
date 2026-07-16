@@ -1,7 +1,6 @@
-// AdminDialog — Ctrl+Shift+N
+// AdminDialog — Ctrl+J then M
 // Creates a brand-new project directly in Firebase Firestore.
-// MP3 files are read for their filenames only — the actual files must be
-// placed in public/tunes/{folder}/ before they will play.
+// MP3 files are referenced by filename only and should live under public/tunes/{folder}/.
 import { useState } from "react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
@@ -38,34 +37,27 @@ export function AdminDialog({ open, onOpenChange }: AdminDialogProps) {
 
   const handleProjectNameChange = (name: string) => {
     setProjectName(name);
-    // Auto-derive folder slug if not manually set
     if (!folder || folder === toSlug(projectName)) {
       setFolder(toSlug(name));
     }
   };
 
-  function toSlug(s: string) {
-    return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  }
+  const toSlug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
   const handleFilePick = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
-    const entries: TrackEntry[] = [];
-    for (let i = 0; i < files.length; i++) {
-      const f = files[i];
-      entries.push({
-        title: f.name.replace(/\.[^.]+$/, "").replace(/[-_]/g, " "),
-        file: f.name,
-        disabled: false,
-        downloadable: false,
-      });
-    }
+    const entries = Array.from(files).map((f) => ({
+      title: f.name.replace(/\.[^.]+$/, "").replace(/[-_]/g, " "),
+      file: f.name,
+      disabled: false,
+      downloadable: false,
+    }));
     setTrackEntries(entries);
   };
 
-  const updateEntry = (i: number, patch: Partial<TrackEntry>) => {
-    setTrackEntries((prev) => prev.map((e, idx) => (idx === i ? { ...e, ...patch } : e)));
+  const updateEntry = (index: number, patch: Partial<TrackEntry>) => {
+    setTrackEntries((prev) => prev.map((entry, idx) => (idx === index ? { ...entry, ...patch } : entry)));
   };
 
   const handleCreate = async () => {
@@ -74,16 +66,14 @@ export function AdminDialog({ open, onOpenChange }: AdminDialogProps) {
     setErrorMsg("");
 
     try {
-      // 1. Create the project doc
       const projectRef = await addDoc(collection(db, "projects"), {
         projectName: projectName.trim(),
         username: username.trim(),
-        password: password,
+        password,
         folder: folder.trim(),
         createdAt: serverTimestamp(),
       });
 
-      // 2. Add each track as a subcollection doc
       const tracksCol = collection(db, "projects", projectRef.id, "tracks");
       for (let i = 0; i < trackEntries.length; i++) {
         const t = trackEntries[i];
@@ -117,7 +107,7 @@ export function AdminDialog({ open, onOpenChange }: AdminDialogProps) {
     setErrorMsg("");
   };
 
-  const canSubmit = projectName && username && password && folder && status === "idle";
+  const canSubmit = Boolean(projectName && username && password && folder && status === "idle");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -126,7 +116,7 @@ export function AdminDialog({ open, onOpenChange }: AdminDialogProps) {
           <DialogTitle className="text-xl tracking-tight flex items-center gap-2">
             Create New Project
             <span className="text-xs font-normal text-muted-foreground bg-black/10 dark:bg-white/10 px-2 py-0.5 rounded-md">
-              Ctrl+Shift+J / M
+              Ctrl+Shift+Q
             </span>
           </DialogTitle>
           <DialogDescription className="text-muted-foreground text-sm">
@@ -143,10 +133,7 @@ export function AdminDialog({ open, onOpenChange }: AdminDialogProps) {
                 Project ID: <code className="text-primary bg-black/10 dark:bg-white/10 px-2 py-0.5 rounded text-xs font-mono">{createdId}</code>
               </p>
               <p className="text-sm text-muted-foreground">
-                Now place MP3 files at:{" "}
-                <code className="text-primary bg-black/10 dark:bg-white/10 px-2 py-0.5 rounded text-xs font-mono">
-                  public/tunes/{folder}/
-                </code>
+                Audio files should be placed in <code className="text-primary bg-black/10 dark:bg-white/10 px-2 py-0.5 rounded text-xs font-mono">public/tunes/{folder}/</code>.
               </p>
               <div className="flex gap-3 justify-center mt-4">
                 <Button variant="outline" onClick={handleReset}>Create Another</Button>
@@ -155,7 +142,6 @@ export function AdminDialog({ open, onOpenChange }: AdminDialogProps) {
             </div>
           ) : (
             <>
-              {/* Project details */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2 space-y-1.5">
                   <Label className="text-xs uppercase tracking-widest text-muted-foreground">Project Name</Label>
@@ -167,11 +153,11 @@ export function AdminDialog({ open, onOpenChange }: AdminDialogProps) {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs uppercase tracking-widest text-muted-foreground">Username</Label>
+                  <Label className="text-xs uppercase tracking-widest text-muted-foreground">Previewer ID</Label>
                   <Input
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    placeholder="director1"
+                    placeholder="previewer1"
                     className="bg-black/5 dark:bg-white/5 border-transparent focus-visible:ring-primary"
                   />
                 </div>
@@ -198,10 +184,9 @@ export function AdminDialog({ open, onOpenChange }: AdminDialogProps) {
                 </div>
               </div>
 
-              {/* MP3 picker */}
               <div className="space-y-2">
                 <Label className="text-xs uppercase tracking-widest text-muted-foreground">
-                  Pick MP3 Files <span className="text-muted-foreground/60">(filenames only — no upload)</span>
+                  Pick MP3 Files <span className="text-muted-foreground/60">(filename only; place files at public/tunes/{folder}/)</span>
                 </Label>
                 <Input
                   type="file"
@@ -212,7 +197,6 @@ export function AdminDialog({ open, onOpenChange }: AdminDialogProps) {
                 />
               </div>
 
-              {/* Track list preview + per-track toggles */}
               {trackEntries.length > 0 && (
                 <div className="space-y-2">
                   <Label className="text-xs uppercase tracking-widest text-muted-foreground">
@@ -257,7 +241,6 @@ export function AdminDialog({ open, onOpenChange }: AdminDialogProps) {
                 </div>
               )}
 
-              {/* Error */}
               {status === "error" && (
                 <div className="flex items-start gap-2 text-destructive text-sm bg-destructive/10 rounded-lg p-3">
                   <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />

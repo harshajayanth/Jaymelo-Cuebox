@@ -1,6 +1,6 @@
 // ProjectEditorDialog — Ctrl+Shift+E
-// All edits write directly to Firebase Firestore in real-time.
-// The Project page's useFirestoreProject hook picks up changes instantly.
+// All metadata writes to Firebase Firestore in real-time.
+// Audio files are served from public/tunes/{folder}/{filename}.
 import { useState } from "react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
@@ -43,8 +43,8 @@ export function ProjectEditorDialog({
   const [trackError, setTrackError] = useState<Record<string, string>>({});
 
   // New track form
-  const [newTitle, setNewTitle] = useState("");
   const [newFile, setNewFile] = useState("");
+  const [newFileObject, setNewFileObject] = useState<File | null>(null);
   const [newDisabled, setNewDisabled] = useState(false);
   const [newDownloadable, setNewDownloadable] = useState(false);
   const [addingTrack, setAddingTrack] = useState(false);
@@ -114,6 +114,8 @@ export function ProjectEditorDialog({
   const handleDelete = async (track: Track) => {
     setDeletingTrack((p) => ({ ...p, [track.id]: true }));
     try {
+      // Only Firestore metadata can be removed from the browser.
+      // The actual MP3 file in public/tunes/{project.folder}/ must be removed manually.
       await deleteDoc(doc(db, "projects", project.id, "tracks", track.id));
       setDeleteConfirm(null);
     } catch (err: any) {
@@ -127,28 +129,28 @@ export function ProjectEditorDialog({
   const handleFilePick = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setNewFileObject(file);
     setNewFile(file.name);
-    if (!newTitle.trim()) {
-      setNewTitle(file.name.replace(/\.[^.]+$/, "").replace(/[-_]/g, " "));
-    }
   };
 
   const handleAddTrack = async () => {
-    if (!newTitle.trim() || !newFile.trim()) return;
+    const fileName = newFileObject?.name ?? newFile.trim();
+    if (!fileName) return;
+    const derivedTitle = fileName.replace(/\.[^.]+$/, "").replace(/[-_]/g, " ");
     setAddingTrack(true);
     setAddError("");
     try {
       const maxOrder = tracks.reduce((m, t) => Math.max(m, t.order), -1);
       await addDoc(collection(db, "projects", project.id, "tracks"), {
-        title: newTitle.trim(),
-        file: newFile.trim(),
+        title: derivedTitle,
+        file: fileName,
         disabled: newDisabled,
         downloadable: newDownloadable,
         order: maxOrder + 1,
         createdAt: serverTimestamp(),
       });
-      setNewTitle("");
       setNewFile("");
+      setNewFileObject(null);
       setNewDisabled(false);
       setNewDownloadable(false);
     } catch (err: any) {
@@ -172,7 +174,7 @@ export function ProjectEditorDialog({
             </span>
           </DialogTitle>
           <DialogDescription className="text-sm text-muted-foreground">
-            All changes sync to Firebase instantly — no download needed.
+            Project metadata is stored in Firestore. Put the MP3 file in public/tunes/{project.folder}/.
           </DialogDescription>
         </DialogHeader>
 
@@ -320,12 +322,6 @@ export function ProjectEditorDialog({
             </Label>
             <div className="bg-black/5 dark:bg-white/5 rounded-xl p-4 space-y-3 border border-dashed border-white/10">
               <div className="flex gap-2">
-                <Input
-                  placeholder="Track title"
-                  value={newTitle}
-                  onChange={(e) => setNewTitle(e.target.value)}
-                  className="flex-1 bg-transparent border-transparent focus-visible:ring-primary"
-                />
                 <Button
                   type="button"
                   variant="outline"
@@ -353,12 +349,9 @@ export function ProjectEditorDialog({
                   </span>
                 </p>
               ) : (
-                <Input
-                  placeholder="or type filename.mp3 manually"
-                  value={newFile}
-                  onChange={(e) => setNewFile(e.target.value)}
-                  className="bg-transparent border-transparent focus-visible:ring-primary font-mono text-xs"
-                />
+                <p className="text-xs text-muted-foreground pl-1">
+                  Choose an MP3 file and then place it in public/tunes/{project.folder}/.
+                </p>
               )}
 
               <div className="flex items-center gap-4 flex-wrap">
@@ -374,13 +367,13 @@ export function ProjectEditorDialog({
                   type="button"
                   size="sm"
                   onClick={handleAddTrack}
-                  disabled={!newTitle.trim() || !newFile.trim() || addingTrack}
+                  disabled={(!newFile.trim() && !newFileObject) || addingTrack}
                   className="ml-auto gap-1.5 bg-primary/90 hover:bg-primary text-primary-foreground"
                 >
                   {addingTrack ? (
                     <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Adding…</>
                   ) : (
-                    <><Plus className="w-3.5 h-3.5" /> Add to Firebase</>
+                    <><Plus className="w-3.5 h-3.5" /> Add Track</>
                   )}
                 </Button>
               </div>
@@ -398,9 +391,7 @@ export function ProjectEditorDialog({
           <div className="flex items-start gap-2 text-xs text-muted-foreground bg-black/5 dark:bg-white/5 rounded-lg p-3">
             <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0 text-primary" />
             <span>
-              New tracks need their MP3 files placed in{" "}
-              <code className="text-primary">public/tunes/{project.folder}/</code> before they will play.
-              Toggle and title changes are instant — no redeploy needed.
+              Pick an MP3 here to select the filename. Then place the actual file in public/tunes/{project.folder}/. If you delete a track, remove the corresponding audio file manually from the public folder.
             </span>
           </div>
         </div>

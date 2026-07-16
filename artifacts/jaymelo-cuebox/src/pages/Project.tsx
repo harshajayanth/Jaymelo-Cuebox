@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
 import { Track } from "@/types";
 import { Header } from "@/components/Header";
@@ -24,12 +24,54 @@ export function ProjectPage() {
   const [editorOpen, setEditorOpen] = useState(false);
 
   const { currentTrack, updateTracks } = usePlayer();
-
-  // Keep the player's internal tracklist in sync with Firestore
-  useEffect(() => {
-    updateTracks(tracks);
-  }, [tracks]); // eslint-disable-line react-hooks/exhaustive-deps
+  const pendingShortcutRef = useRef(false);
+  const [localTrackAvailability, setLocalTrackAvailability] = useState<Record<string, boolean>>({});
+  const [availabilityChecked, setAvailabilityChecked] = useState(false);
   const { project, tracks, loading, error } = useFirestoreProject(projectId);
+
+  useEffect(() => {
+    if (!project) return;
+    let active = true;
+
+    setAvailabilityChecked(false);
+    setLocalTrackAvailability({});
+
+    const checkFiles = async () => {
+      const results = await Promise.all(
+        tracks.map(async (track) => {
+          const url = `/tunes/${project.folder}/${encodeURIComponent(track.file)}`;
+          console.log(url)
+          try {
+            const response = await fetch(url, { method: "HEAD" });
+            return [track.id, response.ok] as const;
+          } catch {
+            return [track.id, false] as const;
+          }
+        })
+      );
+
+      if (!active) return;
+      setLocalTrackAvailability(Object.fromEntries(results));
+      setAvailabilityChecked(true);
+    };
+
+    checkFiles();
+    return () => {
+      active = false;
+    };
+  }, [project, tracks]);
+
+  const visibleTracks = availabilityChecked
+    ? tracks.filter((track) => localTrackAvailability[track.id] !== false)
+    : [];
+  const missingTrackCount = availabilityChecked
+    ? tracks.filter((track) => localTrackAvailability[track.id] === false).length
+    : 0;
+
+  // Keep the player's internal tracklist in sync with available local files
+  useEffect(() => {
+    updateTracks(visibleTracks);
+  }, [visibleTracks, updateTracks]);
 
   // Read session on mount
   useEffect(() => {
@@ -57,21 +99,40 @@ export function ProjectPage() {
 
     const mod = e.ctrlKey || e.metaKey;
 
-    if (mod && e.shiftKey && (e.code === "KeyJ" || e.code === "KeyM")) {
-      e.preventDefault();
-      setAdminOpen((v) => !v);
+    if (!mod) {
+      pendingShortcutRef.current = false;
+      return;
     }
 
-    if (mod && e.shiftKey && e.code === "KeyE") {
+    if (mod && e.shiftKey && e.code === "KeyQ") {
+      e.preventDefault();
+      pendingShortcutRef.current = false;
+      setAdminOpen((v) => !v);
+      return;
+    }
+
+    if (mod && e.code === "KeyE") {
       e.preventDefault();
       setEditorOpen((v) => !v);
     }
+
+    pendingShortcutRef.current = false;
+  }, []);
+
+  const clearPendingShortcut = useCallback(() => {
+    pendingShortcutRef.current = false;
   }, []);
 
   useEffect(() => {
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleKeyDown]);
+    window.addEventListener("keyup", clearPendingShortcut);
+    window.addEventListener("blur", clearPendingShortcut);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", clearPendingShortcut);
+      window.removeEventListener("blur", clearPendingShortcut);
+    };
+  }, [handleKeyDown, clearPendingShortcut]);
 
   const handleSignOut = () => {
     localStorage.removeItem("cuebox_session");
@@ -101,7 +162,7 @@ export function ProjectPage() {
   }
 
   // ── Filter + sort ────────────────────────────────────────────────────────
-  let displayTracks: Track[] = tracks.filter((t) =>
+  let displayTracks: Track[] = visibleTracks.filter((t) =>
     t.title.toLowerCase().includes(search.toLowerCase())
   );
 
@@ -128,7 +189,7 @@ export function ProjectPage() {
 
       <Header
         projectName={project.projectName}
-        trackCount={tracks.length}
+        trackCount={visibleTracks.length}
         onSignOut={handleSignOut}
       />
 
@@ -164,7 +225,12 @@ export function ProjectPage() {
 
         {/* Track grid */}
         <AnimatePresence mode="wait">
-          {displayTracks.length === 0 ? (
+          {missingTrackCount > 0 && (
+          <div className="mb-6 rounded-2xl border border-yellow-300/30 bg-yellow-100/10 p-4 text-sm text-yellow-900 dark:bg-yellow-500/10 dark:text-yellow-200">
+            {missingTrackCount} track{missingTrackCount === 1 ? " is" : "s are"} referenced in Firestore but not found in <code className="font-mono">public/tunes/{project.folder}/</code>. Only available tracks are shown.
+          </div>
+        )}
+        {displayTracks.length === 0 ? (
             <motion.div
               key="empty"
               initial={{ opacity: 0 }}
@@ -173,13 +239,13 @@ export function ProjectPage() {
               className="text-center py-20"
             >
               <p className="text-xl font-medium text-muted-foreground">
-                {tracks.length === 0 ? "No tracks yet." : "No tracks match your search."}
+                {tracks.length === 0
+                  ? "No tracks yet. Add one from the editor."
+                  : missingTrackCount === tracks.length
+                  ? "No audio files are available locally. Place MP3s in public/tunes/{project.folder}/."
+                  : "No tracks match your search."
+                }
               </p>
-              {tracks.length === 0 && (
-                <p className="text-sm text-muted-foreground/60 mt-2">
-                  Open the editor (Ctrl+Shift+E) to add tracks.
-                </p>
-              )}
             </motion.div>
           ) : (
             <motion.div

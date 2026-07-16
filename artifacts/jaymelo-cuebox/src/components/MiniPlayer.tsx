@@ -6,13 +6,14 @@ import { motion, AnimatePresence } from "framer-motion";
 export function MiniPlayer() {
   const { 
     currentTrack, 
-    currentProject, 
-    isPlaying, 
-    currentTime, 
-    duration, 
-    volume, 
-    togglePlay, 
-    setVolume, 
+    currentProject,
+    allTracks,
+    isPlaying,
+    currentTime,
+    duration,
+    volume,
+    togglePlay,
+    setVolume,
     seekTo,
     playNext,
     playPrev
@@ -37,7 +38,7 @@ export function MiniPlayer() {
   };
 
   // Find index to deterministically color the mini artwork
-  const index = currentProject.tracks.findIndex(t => t.file === currentTrack.file);
+  const index = allTracks.findIndex((t) => t.file === currentTrack.file);
   const gradients = [
     "from-blue-600/80 to-purple-600/80",
     "from-rose-500/80 to-orange-500/80",
@@ -60,16 +61,19 @@ export function MiniPlayer() {
         className="fixed bottom-0 left-0 right-0 z-50 glass-miniplayer pb-safe"
       >
         {/* Full width seek bar at very top of miniplayer */}
-        <div 
-          className="h-1.5 w-full bg-black/10 dark:bg-white/10 cursor-pointer relative group"
-          onClick={handleSeekClick}
-        >
-          <div 
-            className="absolute top-0 bottom-0 left-0 bg-primary transition-all duration-100 ease-linear"
-            style={{ width: `${progressPercent}%` }}
-          />
-          {/* Hover state for seek bar */}
-          <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity" />
+<div className="w-full px-4 py-3">
+            <Slider
+              value={[duration > 0 ? (currentTime / duration) * 100 : 0]}
+              min={0}
+              max={100}
+              step={0.1}
+              onValueChange={([value]) => seekTo((value / 100) * duration)}
+              className="w-full"
+            />
+            <div className="flex justify-between text-[10px] text-muted-foreground mt-2 px-1">
+              <span>{formatTime(currentTime)}</span>
+              <span>{duration ? formatTime(duration) : '--:--'}</span>
+            </div>
         </div>
 
         <div className="container mx-auto px-4 h-20 flex items-center justify-between gap-4">

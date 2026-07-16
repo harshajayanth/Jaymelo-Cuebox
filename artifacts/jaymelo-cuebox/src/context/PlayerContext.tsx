@@ -4,6 +4,7 @@ import { Track, Project } from '@/types';
 interface PlayerContextState {
   currentTrack: Track | null;
   currentProject: Project | null;
+  allTracks: Track[];
   isPlaying: boolean;
   currentTime: number;
   duration: number;
@@ -43,6 +44,18 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   const updateTracks = (tracks: Track[]) => {
     setAllTracks(tracks);
+
+    if (currentTrack && !tracks.some((t) => t.file === currentTrack.file)) {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = "";
+      }
+      setCurrentTrack(null);
+      setCurrentProject(null);
+      setIsPlaying(false);
+      setCurrentTime(0);
+      setDuration(0);
+    }
   };
 
   useEffect(() => {
@@ -139,7 +152,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const play = (track: Track, project: Project) => {
+  const play = async (track: Track, project: Project) => {
     const audio = audioRef.current;
     if (!audio) return;
     if (track.disabled) return;
@@ -147,13 +160,13 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     if (currentTrack?.file !== track.file || currentProject?.folder !== project.folder) {
       setCurrentTrack(track);
       setCurrentProject(project);
-      
-      const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
-      audio.src = `${baseUrl}/tunes/${project.folder}/${track.file}`;
+
+      const url = `/tunes/${project.folder}/${encodeURIComponent(track.file)}`;
+      audio.src = url;
       audio.load();
     }
-    
-    audio.play().catch(e => console.error("Playback error", e));
+
+    audio.play().catch((e) => console.error('Playback error', e));
   };
 
   const pause = () => {
@@ -224,6 +237,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       value={{
         currentTrack,
         currentProject,
+        allTracks,
         isPlaying,
         currentTime,
         duration,
