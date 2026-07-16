@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/"
+title = "JAYMELO CUEBOX"
+version = "1.0.0"
+id = "artifacts/jaymelo-cuebox"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 21753
+
+[services.development]
+run = "pnpm --filter @workspace/jaymelo-cuebox run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/jaymelo-cuebox", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/jaymelo-cuebox/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21753"
+BASE_PATH = "/"

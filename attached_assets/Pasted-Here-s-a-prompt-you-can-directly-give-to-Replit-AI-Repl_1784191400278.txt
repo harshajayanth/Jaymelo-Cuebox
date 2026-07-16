@@ -1,0 +1,451 @@
+Here's a prompt you can directly give to Replit AI.
+
+---
+
+**Replit AI Prompt:**
+
+Build a **Next.js 15 + TypeScript** frontend-only web application that is fully compatible with **Vercel deployment**. Do **not** use any backend, database, APIs, authentication services, or external storage. Everything should work from local JSON files and static assets.
+
+## Project Purpose
+
+This website is a **private music preview portal** for sharing music with film directors and producers.
+
+Instead of sending MP3 files through WhatsApp, I want to host them on a password-protected website.
+
+This is **not meant to be secure authentication**. It is only a simple frontend gate to organize projects and avoid casual sharing.
+
+## Tech Stack
+
+* Next.js 15 (App Router)
+* TypeScript
+* Tailwind CSS
+* shadcn/ui components
+* Lucide Icons
+* Framer Motion (only subtle animations)
+* Fully responsive
+* Static export friendly
+* Must deploy directly to Vercel
+* No backend
+* No API routes
+* No database
+* No authentication libraries
+
+Everything should be frontend only.
+
+---
+
+# Folder Structure
+
+```
+public/
+
+    tunes/
+
+        Project-A/
+
+            song1.mp3
+
+            song2.mp3
+
+            artwork.jpg
+
+        Project-B/
+
+            intro.mp3
+
+            bgm.mp3
+
+data/
+
+    projects.json
+```
+
+---
+
+# JSON Structure
+
+```
+[
+  {
+    "projectName": "Movie A",
+
+    "username": "moviea",
+
+    "password": "1234",
+
+    "folder": "Project-A",
+
+    "tracks": [
+      {
+        "title": "Love Theme",
+        "file": "song1.mp3",
+        "disabled": false,
+        "downloadable": false,
+        "comments": []
+      },
+      {
+        "title": "Fight Theme",
+        "file": "song2.mp3",
+        "disabled": true,
+        "downloadable": false,
+        "comments": []
+      }
+    ]
+  }
+]
+```
+
+The application reads only from this JSON.
+
+No database.
+
+---
+
+# Login Screen
+
+Simple centered login.
+
+Fields
+
+* Username
+* Password
+
+Button
+
+Sign In
+
+Logic
+
+Loop through projects.json.
+
+If username/password match
+
+Open that project.
+
+Otherwise
+
+Show "Invalid credentials".
+
+Do not use JWT.
+
+Do not use sessions.
+
+Simply store current project in local state/localStorage.
+
+---
+
+# Project Page
+
+Show
+
+Project Name
+
+Below that show all music cards.
+
+---
+
+# Music Cards
+
+Design similar to Apple Music.
+
+Each card contains
+
+Album artwork placeholder
+
+Track title
+
+Duration (read automatically from audio)
+
+Play/Pause button
+
+Progress bar
+
+Time elapsed
+
+Time remaining
+
+Comment button
+
+Download button
+
+If
+
+downloadable=false
+
+hide download button.
+
+If
+
+disabled=true
+
+grey out card.
+
+Disable playback.
+
+---
+
+# Audio Player
+
+Only one song plays at a time.
+
+Starting another stops previous.
+
+Seek bar.
+
+Current time.
+
+Duration.
+
+Volume slider.
+
+Next / Previous buttons.
+
+Smooth animations.
+
+---
+
+# Comments
+
+Every track has comments.
+
+Since there is no backend,
+
+append comments only in memory.
+
+Example
+
+```
+John:
+
+Loved this melody.
+
+---------
+
+Director:
+
+Can you slow the intro?
+```
+
+No persistence required.
+
+Just frontend state.
+
+---
+
+# Prevent Download
+
+Do not show download button when disabled.
+
+Disable right-click.
+
+Disable drag.
+
+Disable text selection.
+
+Hide controls that expose download.
+
+Use custom HTML5 audio controls.
+
+This is only to discourage casual downloading.
+
+Do not implement DRM.
+
+---
+
+# UI Theme
+
+Very clean.
+
+Inspired by
+
+* macOS
+* Apple Music
+* Apple Podcasts
+
+Use
+
+Rounded corners
+
+Glassmorphism
+
+Soft shadows
+
+Grey background
+
+White cards
+
+Blur effects
+
+Minimal animations
+
+Large spacing
+
+Beautiful typography
+
+Dark mode support.
+
+---
+
+# Admin Shortcut
+
+Create a hidden keyboard shortcut.
+
+Ctrl + Shift + N
+
+When pressed
+
+Open a modal.
+
+The modal asks
+
+Project Name
+
+Username
+
+Password
+
+Upload MP3 files
+
+Artwork image
+
+When Save is clicked
+
+Generate the JSON object.
+
+Show the JSON output.
+
+Also show where the files should be placed.
+
+Example
+
+```
+public/tunes/Project-A/
+```
+
+Since there is no backend,
+
+do NOT actually upload files.
+
+Use browser File API only.
+
+Generate JSON.
+
+Allow downloading
+
+projects.json
+
+after generation.
+
+---
+
+# Routing
+
+```
+/
+
+Login
+
+/project
+
+Music list
+```
+
+---
+
+# Components
+
+Create reusable components.
+
+```
+components/
+
+LoginForm
+
+MusicCard
+
+Player
+
+CommentDialog
+
+AdminDialog
+
+Header
+
+Sidebar (optional)
+
+ThemeToggle
+```
+
+---
+
+# Nice Features
+
+Auto-read MP3 duration.
+
+Search tracks.
+
+Sort alphabetically.
+
+Recently played.
+
+Now Playing mini player at bottom.
+
+Keyboard shortcuts
+
+Space
+
+Play/Pause
+
+Left
+
+Seek backward
+
+Right
+
+Seek forward.
+
+---
+
+# Code Quality
+
+Write clean production-quality code.
+
+Keep logic simple.
+
+Avoid unnecessary abstractions.
+
+Do not over-engineer.
+
+Comment important sections.
+
+Use TypeScript interfaces.
+
+Keep components reusable.
+
+---
+
+# Vercel Compatibility
+
+The project must run with
+
+```
+npm install
+
+npm run dev
+
+npm run build
+```
+
+without modification.
+
+No backend required.
+
+Everything should work as a static frontend deployed on Vercel.
+
+---
+
+### One important note
+
+Because this is a **frontend-only app**, the username/password in `projects.json` and the MP3 files inside `public/` will still be accessible to someone who deliberately inspects the deployed site or its files. This approach is good for **organizing previews and discouraging casual sharing**, but it is **not secure protection**.
+
+If, in the future, you want only invited directors/producers to access music privately, the smallest upgrade would be to keep the same UI and add a tiny serverless backend (using Vercel Functions or Edge Middleware) to verify passwords and stream audio. The rest of the app could remain almost identical.

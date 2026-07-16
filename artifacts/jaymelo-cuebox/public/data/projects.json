@@ -1,0 +1,57 @@
+[
+  {
+    "projectName": "The Last Horizon",
+    "username": "horizon",
+    "password": "1234",
+    "folder": "Project-A",
+    "tracks": [
+      {
+        "title": "Opening Sequence",
+        "file": "song1.mp3",
+        "disabled": false,
+        "downloadable": false,
+        "comments": [
+          { "author": "Director", "text": "Love the tension in the first 30 seconds." }
+        ]
+      },
+      {
+        "title": "Love Theme",
+        "file": "song2.mp3",
+        "disabled": false,
+        "downloadable": false,
+        "comments": []
+      },
+      {
+        "title": "Chase Scene (WIP)",
+        "file": "song3.mp3",
+        "disabled": true,
+        "downloadable": false,
+        "comments": []
+      }
+    ]
+  },
+  {
+    "projectName": "Midnight Protocol",
+    "username": "midnight",
+    "password": "5678",
+    "folder": "Project-B",
+    "tracks": [
+      {
+        "title": "Dark Intro",
+        "file": "intro.mp3",
+        "disabled": false,
+        "downloadable": false,
+        "comments": []
+      },
+      {
+        "title": "Background Tension",
+        "file": "bgm.mp3",
+        "disabled": false,
+        "downloadable": true,
+        "comments": [
+          { "author": "Producer", "text": "Can you slow the intro by 15%?" }
+        ]
+      }
+    ]
+  }
+]
