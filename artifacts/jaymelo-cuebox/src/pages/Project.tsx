@@ -57,7 +57,7 @@ export function ProjectPage() {
 
     const mod = e.ctrlKey || e.metaKey;
 
-    if (mod && e.shiftKey && e.code === "KeyJ") {
+    if (mod && e.shiftKey && (e.code === "KeyJ" || e.code === "KeyM")) {
       e.preventDefault();
       setAdminOpen((v) => !v);
     }

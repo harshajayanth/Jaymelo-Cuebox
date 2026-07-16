@@ -126,7 +126,7 @@ export function AdminDialog({ open, onOpenChange }: AdminDialogProps) {
           <DialogTitle className="text-xl tracking-tight flex items-center gap-2">
             Create New Project
             <span className="text-xs font-normal text-muted-foreground bg-black/10 dark:bg-white/10 px-2 py-0.5 rounded-md">
-              Ctrl+Shift+J
+              Ctrl+Shift+J / M
             </span>
           </DialogTitle>
           <DialogDescription className="text-muted-foreground text-sm">
