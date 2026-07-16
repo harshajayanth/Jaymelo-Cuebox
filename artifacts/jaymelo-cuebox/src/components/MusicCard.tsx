@@ -11,7 +11,6 @@ interface MusicCardProps {
   index: number;
 }
 
-// Deterministic cinematic gradients per track slot
 const GRADIENTS = [
   "from-blue-600/80 to-purple-600/80",
   "from-rose-500/80 to-orange-500/80",
@@ -35,11 +34,8 @@ export function MusicCard({ track, project, index }: MusicCardProps) {
   const handlePlayClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (isDisabled) return;
-    if (isActive) {
-      togglePlay();
-    } else {
-      play(track, project);
-    }
+    if (isActive) togglePlay();
+    else play(track, project);
   };
 
   const handleDownload = (e: React.MouseEvent) => {
@@ -55,29 +51,22 @@ export function MusicCard({ track, project, index }: MusicCardProps) {
     document.body.removeChild(a);
   };
 
-  const formatTime = (seconds: number) => {
-    if (!seconds || isNaN(seconds)) return "0:00";
-    const m = Math.floor(seconds / 60);
-    const s = Math.floor(seconds % 60);
-    return `${m}:${s.toString().padStart(2, "0")}`;
+  const formatTime = (s: number) => {
+    if (!s || isNaN(s)) return "0:00";
+    return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
   };
 
-  const progressPercent =
-    isActive && duration > 0 ? (currentTime / duration) * 100 : 0;
+  const progressPercent = isActive && duration > 0 ? (currentTime / duration) * 100 : 0;
 
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!isActive || duration <= 0) return;
     const rect = e.currentTarget.getBoundingClientRect();
-    const pos = (e.clientX - rect.left) / rect.width;
-    seekTo(pos * duration);
+    seekTo(((e.clientX - rect.left) / rect.width) * duration);
   };
 
   return (
     <motion.div
-      variants={{
-        hidden: { opacity: 0, y: 20 },
-        visible: { opacity: 1, y: 0 },
-      }}
+      variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }}
       className={`relative group overflow-hidden rounded-2xl glass-card transition-all duration-500
         ${isDisabled
           ? "opacity-40 grayscale cursor-not-allowed select-none"
@@ -85,14 +74,11 @@ export function MusicCard({ track, project, index }: MusicCardProps) {
         }
         ${isActive ? "ring-1 ring-primary border-primary/50" : ""}
       `}
-      onClick={() => {
-        if (!isDisabled && !isActive) play(track, project);
-      }}
+      onClick={() => { if (!isDisabled && !isActive) play(track, project); }}
       onContextMenu={(e) => e.preventDefault()}
       onDragStart={(e) => e.preventDefault()}
-      data-testid={`card-track-${track.file}`}
     >
-      {/* Active glow pulse */}
+      {/* Active glow */}
       {isActive && isPlaying && (
         <motion.div
           className="absolute inset-0 bg-primary/5 dark:bg-primary/10 pointer-events-none"
@@ -103,10 +89,9 @@ export function MusicCard({ track, project, index }: MusicCardProps) {
 
       <div className="p-4 flex gap-4 h-full relative z-10">
         {/* Artwork */}
-        <div
-          className={`w-24 h-24 sm:w-32 sm:h-32 rounded-xl flex-shrink-0 bg-gradient-to-br ${gradient}
-            flex items-center justify-center shadow-inner relative overflow-hidden
-            group-hover:scale-[1.02] transition-transform duration-500`}
+        <div className={`w-24 h-24 sm:w-32 sm:h-32 rounded-xl flex-shrink-0 bg-gradient-to-br ${gradient}
+          flex items-center justify-center shadow-inner relative overflow-hidden
+          group-hover:scale-[1.02] transition-transform duration-500`}
         >
           <div className="absolute inset-0 bg-black/10 mix-blend-overlay" />
 
@@ -118,34 +103,19 @@ export function MusicCard({ track, project, index }: MusicCardProps) {
                   ? "bg-primary text-white shadow-lg shadow-primary/40 scale-110"
                   : "bg-black/30 text-white hover:bg-black/50 hover:scale-110 backdrop-blur-sm"
                 }`}
-              data-testid={`button-play-${track.file}`}
             >
-              {isActive && isPlaying ? (
-                <Pause className="w-5 h-5 fill-current" />
-              ) : (
-                <Play className="w-5 h-5 fill-current ml-1" />
-              )}
+              {isActive && isPlaying
+                ? <Pause className="w-5 h-5 fill-current" />
+                : <Play className="w-5 h-5 fill-current ml-1" />
+              }
             </button>
           )}
 
-          {/* Equalizer bars when playing */}
           {isActive && isPlaying && (
             <div className="absolute bottom-2 right-2 flex items-end gap-0.5 h-4 opacity-70">
-              <motion.div
-                animate={{ height: ["4px", "12px", "4px"] }}
-                transition={{ duration: 0.5, repeat: Infinity }}
-                className="w-1 bg-white rounded-t"
-              />
-              <motion.div
-                animate={{ height: ["8px", "16px", "8px"] }}
-                transition={{ duration: 0.7, repeat: Infinity }}
-                className="w-1 bg-white rounded-t"
-              />
-              <motion.div
-                animate={{ height: ["12px", "6px", "12px"] }}
-                transition={{ duration: 0.6, repeat: Infinity }}
-                className="w-1 bg-white rounded-t"
-              />
+              <motion.div animate={{ height: ["4px","12px","4px"] }} transition={{ duration: 0.5, repeat: Infinity }} className="w-1 bg-white rounded-t" />
+              <motion.div animate={{ height: ["8px","16px","8px"] }} transition={{ duration: 0.7, repeat: Infinity }} className="w-1 bg-white rounded-t" />
+              <motion.div animate={{ height: ["12px","6px","12px"] }} transition={{ duration: 0.6, repeat: Infinity }} className="w-1 bg-white rounded-t" />
             </div>
           )}
         </div>
@@ -165,46 +135,32 @@ export function MusicCard({ track, project, index }: MusicCardProps) {
 
           <div className="flex items-end justify-between mt-4">
             <div className="w-full mr-3">
-              {/* Progress bar — only visible when active */}
               <div
                 className={`h-2 rounded-full bg-black/5 dark:bg-white/10 overflow-hidden cursor-pointer
                   relative transition-opacity duration-300 ${isActive ? "opacity-100" : "opacity-0"}`}
                 onClick={handleSeek}
               >
-                <div
-                  className="h-full bg-primary relative"
-                  style={{ width: `${progressPercent}%` }}
-                >
+                <div className="h-full bg-primary relative" style={{ width: `${progressPercent}%` }}>
                   <div className="absolute right-0 top-0 bottom-0 w-2 bg-white/50 blur-[2px]" />
                 </div>
               </div>
-              <div
-                className={`flex justify-between mt-1.5 text-[10px] sm:text-xs font-medium
-                  text-muted-foreground transition-opacity duration-300 ${isActive ? "opacity-100" : "opacity-0"}`}
+              <div className={`flex justify-between mt-1.5 text-[10px] sm:text-xs font-medium
+                text-muted-foreground transition-opacity duration-300 ${isActive ? "opacity-100" : "opacity-0"}`}
               >
                 <span>{formatTime(currentTime)}</span>
                 <span>{duration ? formatTime(duration) : "—"}</span>
               </div>
             </div>
 
-            {/* Actions */}
-            <div
-              className="flex items-center gap-1 shrink-0"
-              onClick={(e) => e.stopPropagation()}
-            >
+            <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
               {!isDisabled && (
-                <CommentDialog
-                  track={track}
-                  projectFolder={project.folder}
-                />
+                <CommentDialog track={track} projectFolder={project.folder} />
               )}
               {!isDisabled && track.downloadable && (
                 <Button
-                  variant="ghost"
-                  size="icon"
+                  variant="ghost" size="icon"
                   onClick={handleDownload}
                   className="rounded-full w-9 h-9 text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/10"
-                  data-testid={`button-download-${track.file}`}
                 >
                   <Download className="w-4 h-4" />
                 </Button>

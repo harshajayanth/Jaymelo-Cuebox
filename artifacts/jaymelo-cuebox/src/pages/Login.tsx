@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Project } from "@/types";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { collection, query, where, getDocs } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 export function Login() {
   const [username, setUsername] = useState("");
@@ -15,9 +16,9 @@ export function Login() {
   const [, setLocation] = useLocation();
 
   useEffect(() => {
-    // If already logged in, redirect to project
-    const saved = localStorage.getItem("cuebox_project");
-    if (saved) {
+    // If a session is already active, go straight to the project
+    const session = localStorage.getItem("cuebox_session");
+    if (session) {
       setLocation("/project");
     }
   }, [setLocation]);
@@ -28,25 +29,32 @@ export function Login() {
     setIsLoading(true);
 
     try {
-      const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, '');
-      const response = await fetch(`${baseUrl}/data/projects.json`);
-      if (!response.ok) throw new Error("Failed to load projects");
-      
-      const projects: Project[] = await response.json();
-      
-      const project = projects.find(
-        (p) => p.username === username && p.password === password
+      // Query Firestore for a project matching username + password.
+      // Two equality where-clauses: no composite index required.
+      const q = query(
+        collection(db, "projects"),
+        where("username", "==", username.trim()),
+        where("password", "==", password)
       );
 
-      if (project) {
-        localStorage.setItem("cuebox_project", JSON.stringify(project));
-        setLocation("/project");
-      } else {
-        setError("Invalid credentials");
+      const snapshot = await getDocs(q);
+
+      if (snapshot.empty) {
+        setError("Invalid credentials. Please try again.");
+        return;
       }
+
+      const projectDoc = snapshot.docs[0];
+
+      // Store only the project ID as the session — all data comes from Firestore
+      localStorage.setItem(
+        "cuebox_session",
+        JSON.stringify({ projectId: projectDoc.id })
+      );
+      setLocation("/project");
     } catch (err) {
-      console.error(err);
-      setError("Unable to authenticate at this time");
+      console.error("Login error:", err);
+      setError("Unable to connect. Please check your network.");
     } finally {
       setIsLoading(false);
     }
@@ -54,14 +62,12 @@ export function Login() {
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center relative overflow-hidden bg-background">
-      {/* Cinematic Background Gradients */}
+      {/* Cinematic background glows */}
       <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] rounded-full bg-primary/10 blur-[120px] pointer-events-none" />
       <div className="absolute bottom-[-20%] right-[-10%] w-[60%] h-[60%] rounded-full bg-blue-500/10 dark:bg-blue-900/20 blur-[120px] pointer-events-none" />
-      
-      {/* Film grain noise via fixed pseudo-element effect can be done in CSS, here just minimal background */}
       <div className="absolute inset-0 opacity-[0.03] dark:opacity-[0.05] pointer-events-none mix-blend-overlay bg-[url('https://grainy-gradients.vercel.app/noise.svg')]" />
 
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
@@ -70,7 +76,7 @@ export function Login() {
         <div className="flex justify-between items-start mb-12">
           <div>
             <h1 className="text-3xl font-bold tracking-tighter uppercase mb-1">
-              Jaymelo <br/>
+              Jaymelo <br />
               <span className="font-light opacity-60">Cuebox</span>
             </h1>
             <p className="text-sm text-muted-foreground">Private Screening Room</p>
@@ -81,25 +87,37 @@ export function Login() {
         <form onSubmit={handleLogin} className="space-y-6">
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="username" className="text-xs uppercase tracking-widest text-muted-foreground font-semibold">Director ID</Label>
+              <Label
+                htmlFor="username"
+                className="text-xs uppercase tracking-widest text-muted-foreground font-semibold"
+              >
+                Director ID
+              </Label>
               <Input
                 id="username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="Enter access ID"
+                autoComplete="username"
                 className="bg-black/5 dark:bg-white/5 border-transparent focus-visible:ring-primary h-12 text-base"
                 required
               />
             </div>
-            
+
             <div className="space-y-2">
-              <Label htmlFor="password" className="text-xs uppercase tracking-widest text-muted-foreground font-semibold">Passcode</Label>
+              <Label
+                htmlFor="password"
+                className="text-xs uppercase tracking-widest text-muted-foreground font-semibold"
+              >
+                Passcode
+              </Label>
               <Input
                 id="password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter passcode"
+                autoComplete="current-password"
                 className="bg-black/5 dark:bg-white/5 border-transparent focus-visible:ring-primary h-12 text-base"
                 required
               />
@@ -119,8 +137,8 @@ export function Login() {
             )}
           </AnimatePresence>
 
-          <Button 
-            type="submit" 
+          <Button
+            type="submit"
             className="w-full h-12 text-base font-medium rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/25 transition-all"
             disabled={isLoading}
           >
@@ -131,6 +149,3 @@ export function Login() {
     </div>
   );
 }
-
-// Needed for AnimatePresence missing import above
-import { AnimatePresence } from "framer-motion";

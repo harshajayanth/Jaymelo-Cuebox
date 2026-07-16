@@ -15,6 +15,8 @@ interface PlayerContextState {
   setVolume: (vol: number) => void;
   playNext: () => void;
   playPrev: () => void;
+  /** Call this whenever Firestore delivers a fresh tracks list */
+  updateTracks: (tracks: Track[]) => void;
 }
 
 const PlayerContext = createContext<PlayerContextState | undefined>(undefined);
@@ -22,6 +24,7 @@ const PlayerContext = createContext<PlayerContextState | undefined>(undefined);
 export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
+  const [allTracks, setAllTracks] = useState<Track[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -32,11 +35,15 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   });
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const stateRef = useRef({ currentTrack, currentProject });
+  const stateRef = useRef({ currentTrack, currentProject, allTracks });
 
   useEffect(() => {
-    stateRef.current = { currentTrack, currentProject };
-  }, [currentTrack, currentProject]);
+    stateRef.current = { currentTrack, currentProject, allTracks };
+  }, [currentTrack, currentProject, allTracks]);
+
+  const updateTracks = (tracks: Track[]) => {
+    setAllTracks(tracks);
+  };
 
   useEffect(() => {
     const audio = new Audio();
@@ -51,17 +58,17 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const playNext = () => {
-    const { currentTrack: track, currentProject: project } = stateRef.current;
-    if (!track || !project) return;
-    const idx = project.tracks.findIndex(t => t.file === track.file);
-    if (idx >= 0 && idx < project.tracks.length - 1) {
-      let nextTrack = project.tracks[idx + 1];
+    const { currentTrack: track, currentProject: project, allTracks: tracklist } = stateRef.current;
+    if (!track || !project || tracklist.length === 0) return;
+    const idx = tracklist.findIndex(t => t.file === track.file);
+    if (idx >= 0 && idx < tracklist.length - 1) {
+      let nextTrack = tracklist[idx + 1];
       let offset = 1;
       while (nextTrack && nextTrack.disabled) {
         offset++;
-        nextTrack = project.tracks[idx + offset];
+        nextTrack = tracklist[idx + offset];
       }
-      if (nextTrack) {
+      if (nextTrack && !nextTrack.disabled) {
         play(nextTrack, project);
       }
     }
@@ -105,22 +112,22 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   }, []); // bind once, playNext uses ref inside
 
   const playPrev = () => {
-    const { currentTrack: track, currentProject: project } = stateRef.current;
-    if (!track || !project) return;
-    const idx = project.tracks.findIndex(t => t.file === track.file);
-    
+    const { currentTrack: track, currentProject: project, allTracks: tracklist } = stateRef.current;
+    if (!track || !project || tracklist.length === 0) return;
+    const idx = tracklist.findIndex(t => t.file === track.file);
+
     if (audioRef.current && audioRef.current.currentTime > 3) {
-      // If playing for more than 3 seconds, just restart track
+      // If playing for more than 3 seconds, restart the current track
       audioRef.current.currentTime = 0;
       return;
     }
 
     if (idx > 0) {
-      let prevTrack = project.tracks[idx - 1];
+      let prevTrack = tracklist[idx - 1];
       let offset = 1;
       while (prevTrack && prevTrack.disabled && idx - offset >= 0) {
         offset++;
-        prevTrack = project.tracks[idx - offset];
+        prevTrack = tracklist[idx - offset];
       }
       if (prevTrack && !prevTrack.disabled) {
         play(prevTrack, project);
@@ -228,6 +235,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         setVolume,
         playNext,
         playPrev,
+        updateTracks,
       }}
     >
       {children}

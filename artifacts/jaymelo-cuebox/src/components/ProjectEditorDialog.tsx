@@ -1,8 +1,7 @@
-// ProjectEditorDialog — opened with Ctrl+Shift+E
-// Edit the current project: rename tracks, toggle permissions, delete, add new tracks.
-// Changes are saved to localStorage immediately. Use "Download JSON" to get a
-// projects.json you can commit and redeploy to make changes permanent.
-import { useState, useRef } from "react";
+// ProjectEditorDialog — Ctrl+Shift+E
+// All edits write directly to Firebase Firestore in real-time.
+// The Project page's useFirestoreProject hook picks up changes instantly.
+import { useState } from "react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
@@ -11,139 +10,153 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import {
-  Trash2, Plus, Download, Save, Music, AlertCircle, FolderOpen,
-} from "lucide-react";
+import { Trash2, Plus, Loader2, CheckCircle2, FolderOpen, AlertCircle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Project, Track } from "@/types";
+import {
+  doc, collection, updateDoc, deleteDoc, addDoc, serverTimestamp,
+} from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 interface ProjectEditorDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   project: Project;
-  onSave: (updated: Project) => void;
+  tracks: Track[];
 }
-
-// Editable track state (mirrors Track but keeps original file ref)
-interface EditableTrack extends Track {
-  _tempId: string; // stable key for React list
-}
-
-let trackCounter = 0;
-function makeTempId() { return `t_${++trackCounter}`; }
 
 export function ProjectEditorDialog({
   open,
   onOpenChange,
   project,
-  onSave,
+  tracks,
 }: ProjectEditorDialogProps) {
-  // Local editable state — initialised from project each time the dialog opens
+  // Project name (local until saved)
   const [projectName, setProjectName] = useState(project.projectName);
-  const [tracks, setTracks] = useState<EditableTrack[]>(() =>
-    project.tracks.map((t) => ({ ...t, _tempId: makeTempId() }))
-  );
+  const [savingName, setSavingName] = useState(false);
+  const [nameSaved, setNameSaved] = useState(false);
+
+  // Track-level saving state (keyed by track id)
+  const [savingTrack, setSavingTrack] = useState<Record<string, boolean>>({});
+  const [deletingTrack, setDeletingTrack] = useState<Record<string, boolean>>({});
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [trackError, setTrackError] = useState<Record<string, string>>({});
 
   // New track form
   const [newTitle, setNewTitle] = useState("");
   const [newFile, setNewFile] = useState("");
   const [newDisabled, setNewDisabled] = useState(false);
   const [newDownloadable, setNewDownloadable] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [addingTrack, setAddingTrack] = useState(false);
+  const [addError, setAddError] = useState("");
 
-  // JSON preview
-  const [showJson, setShowJson] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-
-  // Re-sync local state when project changes (e.g. after external save)
-  // But only when dialog opens fresh
+  // Sync local name when project changes
   const handleOpenChange = (val: boolean) => {
     if (val) {
       setProjectName(project.projectName);
-      setTracks(project.tracks.map((t) => ({ ...t, _tempId: makeTempId() })));
-      setShowJson(false);
-      setSaved(false);
-      setNewTitle("");
-      setNewFile("");
+      setNameSaved(false);
       setDeleteConfirm(null);
+      setAddError("");
     }
     onOpenChange(val);
   };
 
-  // Track field updaters
-  const updateTrack = (tempId: string, patch: Partial<Track>) => {
-    setTracks((prev) =>
-      prev.map((t) => (t._tempId === tempId ? { ...t, ...patch } : t))
-    );
+  // ── Project name ──────────────────────────────────────────────────────────
+  const handleSaveName = async () => {
+    if (!projectName.trim() || projectName === project.projectName) return;
+    setSavingName(true);
+    try {
+      await updateDoc(doc(db, "projects", project.id), {
+        projectName: projectName.trim(),
+      });
+      setNameSaved(true);
+      setTimeout(() => setNameSaved(false), 2000);
+    } finally {
+      setSavingName(false);
+    }
   };
 
-  const deleteTrack = (tempId: string) => {
-    setTracks((prev) => prev.filter((t) => t._tempId !== tempId));
-    setDeleteConfirm(null);
+  // ── Track toggles (immediate write) ──────────────────────────────────────
+  const handleToggle = async (
+    track: Track,
+    field: "disabled" | "downloadable",
+    value: boolean
+  ) => {
+    setSavingTrack((p) => ({ ...p, [track.id]: true }));
+    setTrackError((p) => ({ ...p, [track.id]: "" }));
+    try {
+      await updateDoc(
+        doc(db, "projects", project.id, "tracks", track.id),
+        { [field]: value }
+      );
+    } catch (err: any) {
+      setTrackError((p) => ({ ...p, [track.id]: err?.message ?? "Save failed" }));
+    } finally {
+      setSavingTrack((p) => ({ ...p, [track.id]: false }));
+    }
   };
 
-  // Pick file from disk — read filename only (no upload)
+  // ── Track title (save on blur) ────────────────────────────────────────────
+  const handleTitleBlur = async (track: Track, newTitle: string) => {
+    if (!newTitle.trim() || newTitle === track.title) return;
+    setSavingTrack((p) => ({ ...p, [track.id]: true }));
+    try {
+      await updateDoc(
+        doc(db, "projects", project.id, "tracks", track.id),
+        { title: newTitle.trim() }
+      );
+    } finally {
+      setSavingTrack((p) => ({ ...p, [track.id]: false }));
+    }
+  };
+
+  // ── Delete track ──────────────────────────────────────────────────────────
+  const handleDelete = async (track: Track) => {
+    setDeletingTrack((p) => ({ ...p, [track.id]: true }));
+    try {
+      await deleteDoc(doc(db, "projects", project.id, "tracks", track.id));
+      setDeleteConfirm(null);
+    } catch (err: any) {
+      setTrackError((p) => ({ ...p, [track.id]: err?.message ?? "Delete failed" }));
+    } finally {
+      setDeletingTrack((p) => ({ ...p, [track.id]: false }));
+    }
+  };
+
+  // ── Add new track ─────────────────────────────────────────────────────────
   const handleFilePick = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setNewFile(file.name);
-    // Pre-fill title from filename if blank
     if (!newTitle.trim()) {
       setNewTitle(file.name.replace(/\.[^.]+$/, "").replace(/[-_]/g, " "));
     }
   };
 
-  const addTrack = () => {
+  const handleAddTrack = async () => {
     if (!newTitle.trim() || !newFile.trim()) return;
-    const track: EditableTrack = {
-      title: newTitle.trim(),
-      file: newFile.trim(),
-      disabled: newDisabled,
-      downloadable: newDownloadable,
-      comments: [],
-      _tempId: makeTempId(),
-    };
-    setTracks((prev) => [...prev, track]);
-    setNewTitle("");
-    setNewFile("");
-    setNewDisabled(false);
-    setNewDownloadable(false);
-    if (fileInputRef.current) fileInputRef.current.value = "";
+    setAddingTrack(true);
+    setAddError("");
+    try {
+      const maxOrder = tracks.reduce((m, t) => Math.max(m, t.order), -1);
+      await addDoc(collection(db, "projects", project.id, "tracks"), {
+        title: newTitle.trim(),
+        file: newFile.trim(),
+        disabled: newDisabled,
+        downloadable: newDownloadable,
+        order: maxOrder + 1,
+        createdAt: serverTimestamp(),
+      });
+      setNewTitle("");
+      setNewFile("");
+      setNewDisabled(false);
+      setNewDownloadable(false);
+    } catch (err: any) {
+      setAddError(err?.message ?? "Failed to add track");
+    } finally {
+      setAddingTrack(false);
+    }
   };
-
-  const buildUpdatedProject = (): Project => ({
-    ...project,
-    projectName: projectName.trim() || project.projectName,
-    tracks: tracks.map(({ _tempId: _id, ...rest }) => rest),
-  });
-
-  const handleSave = () => {
-    const updated = buildUpdatedProject();
-    localStorage.setItem("cuebox_project", JSON.stringify(updated));
-    onSave(updated);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  };
-
-  const handleDownloadJson = () => {
-    // Build a full projects.json array — since we only have the current project
-    // we wrap it. Users managing multiple projects should update manually.
-    const updated = buildUpdatedProject();
-    const blob = new Blob([JSON.stringify([updated], null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "projects.json";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  const generatedJson = JSON.stringify(buildUpdatedProject(), null, 2);
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -158,12 +171,8 @@ export function ProjectEditorDialog({
               Ctrl+Shift+E
             </span>
           </DialogTitle>
-          <DialogDescription className="text-muted-foreground text-sm">
-            Changes save to your session. Download the JSON and replace{" "}
-            <code className="text-primary text-xs bg-black/10 dark:bg-white/10 px-1 py-0.5 rounded">
-              public/data/projects.json
-            </code>{" "}
-            to make them permanent after redeploy.
+          <DialogDescription className="text-sm text-muted-foreground">
+            All changes sync to Firebase instantly — no download needed.
           </DialogDescription>
         </DialogHeader>
 
@@ -173,13 +182,28 @@ export function ProjectEditorDialog({
             <Label className="text-xs uppercase tracking-widest text-muted-foreground font-semibold">
               Project Name
             </Label>
-            <Input
-              value={projectName}
-              onChange={(e) => setProjectName(e.target.value)}
-              className="bg-black/5 dark:bg-white/5 border-transparent focus-visible:ring-primary text-lg font-semibold"
-              placeholder="Project name..."
-              data-testid="input-project-name"
-            />
+            <div className="flex gap-2">
+              <Input
+                value={projectName}
+                onChange={(e) => { setProjectName(e.target.value); setNameSaved(false); }}
+                onKeyDown={(e) => e.key === "Enter" && handleSaveName()}
+                className="flex-1 bg-black/5 dark:bg-white/5 border-transparent focus-visible:ring-primary text-lg font-semibold"
+              />
+              <Button
+                size="sm"
+                onClick={handleSaveName}
+                disabled={savingName || projectName === project.projectName}
+                className="shrink-0 gap-1.5 bg-primary/90 hover:bg-primary text-primary-foreground"
+              >
+                {savingName ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : nameSaved ? (
+                  <><CheckCircle2 className="w-3.5 h-3.5" /> Saved</>
+                ) : (
+                  "Save"
+                )}
+              </Button>
+            </div>
           </div>
 
           <Separator className="opacity-30" />
@@ -197,40 +221,43 @@ export function ProjectEditorDialog({
                   animate={{ opacity: 1 }}
                   className="text-sm text-muted-foreground italic text-center py-4"
                 >
-                  No tracks. Add one below.
+                  No tracks yet. Add one below.
                 </motion.p>
               )}
 
               {tracks.map((track, idx) => (
                 <motion.div
-                  key={track._tempId}
+                  key={track.id}
                   initial={{ opacity: 0, y: -8 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, x: -20, height: 0, marginBottom: 0 }}
                   transition={{ duration: 0.2 }}
                   className="bg-black/5 dark:bg-white/5 rounded-xl p-4 space-y-3 border border-white/5"
                 >
-                  {/* Row 1: index + title + delete */}
+                  {/* Title row */}
                   <div className="flex items-center gap-3">
-                    <span className="text-xs font-mono text-muted-foreground/60 w-5 shrink-0 text-right">
+                    <span className="text-xs font-mono text-muted-foreground/50 w-5 shrink-0 text-right">
                       {idx + 1}
                     </span>
                     <Input
-                      value={track.title}
-                      onChange={(e) => updateTrack(track._tempId, { title: e.target.value })}
+                      defaultValue={track.title}
+                      onBlur={(e) => handleTitleBlur(track, e.target.value)}
                       className="flex-1 bg-transparent border-transparent focus-visible:ring-primary h-9 font-medium"
                       placeholder="Track title"
-                      data-testid={`input-track-title-${idx}`}
                     />
-                    {deleteConfirm === track._tempId ? (
+                    {savingTrack[track.id] && (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground shrink-0" />
+                    )}
+                    {deleteConfirm === track.id ? (
                       <div className="flex gap-1 shrink-0">
                         <Button
                           size="sm"
                           variant="destructive"
-                          onClick={() => deleteTrack(track._tempId)}
+                          onClick={() => handleDelete(track)}
+                          disabled={deletingTrack[track.id]}
                           className="h-7 px-2 text-xs"
                         >
-                          Delete
+                          {deletingTrack[track.id] ? <Loader2 className="w-3 h-3 animate-spin" /> : "Delete"}
                         </Button>
                         <Button
                           size="sm"
@@ -245,49 +272,40 @@ export function ProjectEditorDialog({
                       <Button
                         size="icon"
                         variant="ghost"
-                        onClick={() => setDeleteConfirm(track._tempId)}
+                        onClick={() => setDeleteConfirm(track.id)}
                         className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
-                        data-testid={`button-delete-track-${idx}`}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>
                     )}
                   </div>
 
-                  {/* Row 2: filename + toggles */}
+                  {/* Filename + toggles */}
                   <div className="flex items-center gap-4 pl-8 flex-wrap">
-                    <span className="text-xs text-muted-foreground/60 font-mono truncate max-w-[140px]">
+                    <span className="text-[10px] text-muted-foreground/40 font-mono truncate max-w-[140px]">
                       {track.file}
                     </span>
                     <div className="flex items-center gap-1.5 ml-auto">
                       <Switch
-                        id={`disabled-${track._tempId}`}
                         checked={track.disabled}
-                        onCheckedChange={(v) => updateTrack(track._tempId, { disabled: v })}
-                        data-testid={`switch-disabled-${idx}`}
+                        onCheckedChange={(v) => handleToggle(track, "disabled", v)}
+                        disabled={!!savingTrack[track.id]}
                       />
-                      <Label
-                        htmlFor={`disabled-${track._tempId}`}
-                        className="text-xs cursor-pointer text-muted-foreground"
-                      >
-                        Disabled
-                      </Label>
+                      <Label className="text-xs cursor-pointer text-muted-foreground">Disabled</Label>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <Switch
-                        id={`dl-${track._tempId}`}
                         checked={track.downloadable}
-                        onCheckedChange={(v) => updateTrack(track._tempId, { downloadable: v })}
-                        data-testid={`switch-downloadable-${idx}`}
+                        onCheckedChange={(v) => handleToggle(track, "downloadable", v)}
+                        disabled={!!savingTrack[track.id]}
                       />
-                      <Label
-                        htmlFor={`dl-${track._tempId}`}
-                        className="text-xs cursor-pointer text-muted-foreground"
-                      >
-                        Downloadable
-                      </Label>
+                      <Label className="text-xs cursor-pointer text-muted-foreground">Downloadable</Label>
                     </div>
                   </div>
+
+                  {trackError[track.id] && (
+                    <p className="text-xs text-destructive pl-8">{trackError[track.id]}</p>
+                  )}
                 </motion.div>
               ))}
             </AnimatePresence>
@@ -307,21 +325,19 @@ export function ProjectEditorDialog({
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
                   className="flex-1 bg-transparent border-transparent focus-visible:ring-primary"
-                  data-testid="input-new-track-title"
                 />
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={() => document.getElementById("new-track-file-input")?.click()}
                   className="shrink-0 gap-1.5 text-xs bg-transparent"
-                  data-testid="button-pick-file"
                 >
                   <FolderOpen className="w-3.5 h-3.5" />
                   Pick MP3
                 </Button>
                 <input
-                  ref={fileInputRef}
+                  id="new-track-file-input"
                   type="file"
                   accept=".mp3,audio/*"
                   className="hidden"
@@ -329,85 +345,53 @@ export function ProjectEditorDialog({
                 />
               </div>
 
-              {newFile && (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Music className="w-3 h-3 text-primary" />
-                  <span className="font-mono">{newFile}</span>
+              {newFile ? (
+                <p className="text-xs text-muted-foreground font-mono pl-1">
+                  📁 {newFile}{" "}
                   <span className="text-muted-foreground/50">
-                    → place in{" "}
-                    <code className="text-primary">public/tunes/{project.folder}/</code>
+                    → public/tunes/{project.folder}/
                   </span>
-                </div>
-              )}
-
-              {!newFile && (
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="filename.mp3 (if not picking a file)"
-                    value={newFile}
-                    onChange={(e) => setNewFile(e.target.value)}
-                    className="flex-1 bg-transparent border-transparent focus-visible:ring-primary font-mono text-xs"
-                    data-testid="input-new-track-filename"
-                  />
-                </div>
+                </p>
+              ) : (
+                <Input
+                  placeholder="or type filename.mp3 manually"
+                  value={newFile}
+                  onChange={(e) => setNewFile(e.target.value)}
+                  className="bg-transparent border-transparent focus-visible:ring-primary font-mono text-xs"
+                />
               )}
 
               <div className="flex items-center gap-4 flex-wrap">
                 <div className="flex items-center gap-1.5">
-                  <Switch
-                    id="new-disabled"
-                    checked={newDisabled}
-                    onCheckedChange={setNewDisabled}
-                  />
-                  <Label htmlFor="new-disabled" className="text-xs cursor-pointer text-muted-foreground">
-                    Disabled
-                  </Label>
+                  <Switch checked={newDisabled} onCheckedChange={setNewDisabled} />
+                  <Label className="text-xs cursor-pointer text-muted-foreground">Disabled</Label>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <Switch
-                    id="new-downloadable"
-                    checked={newDownloadable}
-                    onCheckedChange={setNewDownloadable}
-                  />
-                  <Label htmlFor="new-downloadable" className="text-xs cursor-pointer text-muted-foreground">
-                    Downloadable
-                  </Label>
+                  <Switch checked={newDownloadable} onCheckedChange={setNewDownloadable} />
+                  <Label className="text-xs cursor-pointer text-muted-foreground">Downloadable</Label>
                 </div>
                 <Button
                   type="button"
                   size="sm"
-                  onClick={addTrack}
-                  disabled={!newTitle.trim() || !newFile.trim()}
+                  onClick={handleAddTrack}
+                  disabled={!newTitle.trim() || !newFile.trim() || addingTrack}
                   className="ml-auto gap-1.5 bg-primary/90 hover:bg-primary text-primary-foreground"
-                  data-testid="button-add-track"
                 >
-                  <Plus className="w-3.5 h-3.5" />
-                  Add Track
+                  {addingTrack ? (
+                    <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Adding…</>
+                  ) : (
+                    <><Plus className="w-3.5 h-3.5" /> Add to Firebase</>
+                  )}
                 </Button>
               </div>
-            </div>
-          </div>
 
-          {/* JSON preview */}
-          <div className="space-y-2">
-            <button
-              onClick={() => setShowJson((v) => !v)}
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5"
-            >
-              <span>{showJson ? "Hide" : "Preview"} generated JSON</span>
-            </button>
-            <AnimatePresence>
-              {showJson && (
-                <motion.pre
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="text-[10px] font-mono bg-black/10 dark:bg-black/30 rounded-lg p-4 overflow-x-auto text-muted-foreground border border-white/5 max-h-48 overflow-y-auto"
-                >
-                  {generatedJson}
-                </motion.pre>
+              {addError && (
+                <div className="flex items-center gap-2 text-destructive text-xs">
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  {addError}
+                </div>
               )}
-            </AnimatePresence>
+            </div>
           </div>
 
           {/* Info note */}
@@ -416,34 +400,9 @@ export function ProjectEditorDialog({
             <span>
               New tracks need their MP3 files placed in{" "}
               <code className="text-primary">public/tunes/{project.folder}/</code> before they will play.
-              Download the JSON and replace{" "}
-              <code className="text-primary">public/data/projects.json</code> in your repo, then redeploy.
+              Toggle and title changes are instant — no redeploy needed.
             </span>
           </div>
-        </div>
-
-        {/* Footer actions */}
-        <div className="flex gap-3 mt-5 pt-4 border-t border-border/30 shrink-0">
-          <Button
-            variant="outline"
-            onClick={handleDownloadJson}
-            className="gap-2 bg-transparent"
-            data-testid="button-download-json"
-          >
-            <Download className="w-4 h-4" />
-            Download JSON
-          </Button>
-          <Button
-            onClick={handleSave}
-            className="ml-auto gap-2 bg-primary hover:bg-primary/90 text-primary-foreground min-w-[120px]"
-            data-testid="button-save-project"
-          >
-            {saved ? (
-              "Saved!"
-            ) : (
-              <><Save className="w-4 h-4" /> Save Changes</>
-            )}
-          </Button>
         </div>
       </DialogContent>
     </Dialog>
