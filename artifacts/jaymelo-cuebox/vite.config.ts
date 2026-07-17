@@ -3,6 +3,59 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
 
+function cueboxTuneAuthPlugin() {
+  const requireSession = (req: any, res: any, next: () => void) => {
+    if (!req.url?.startsWith('/tunes/')) {
+      next();
+      return;
+    }
+
+    const cookies = Object.fromEntries(
+      (req.headers.cookie || '')
+        .split(';')
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+        .map((entry) => {
+          const [key, ...valueParts] = entry.split('=');
+          return [key, valueParts.join('=')];
+        })
+    );
+
+    const sessionCookie = cookies.cuebox_session;
+    const sessionHeader = req.headers['x-cuebox-session'];
+    const rawSession = sessionCookie || sessionHeader;
+
+    if (!rawSession) {
+      res.statusCode = 401;
+      res.end('Unauthorized');
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(decodeURIComponent(rawSession));
+      if (!parsed?.projectId) {
+        throw new Error('Invalid session');
+      }
+    } catch {
+      res.statusCode = 401;
+      res.end('Unauthorized');
+      return;
+    }
+
+    next();
+  };
+
+  return {
+    name: 'cuebox-tune-auth',
+    configureServer(server: any) {
+      server.middlewares.use(requireSession);
+    },
+    configurePreviewServer(server: any) {
+      server.middlewares.use(requireSession);
+    },
+  };
+}
+
 import runtimeErrorOverlay from '@replit/vite-plugin-runtime-error-modal';
 
 const rawPort = process.env.PORT ?? '5173';
@@ -18,6 +71,7 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
+    cueboxTuneAuthPlugin(),
     runtimeErrorOverlay(),
     ...(process.env.NODE_ENV !== 'production' &&
     process.env.REPL_ID !== undefined

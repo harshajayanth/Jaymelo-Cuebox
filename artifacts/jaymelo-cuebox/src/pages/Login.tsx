@@ -10,6 +10,8 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { AdminDialog } from "@/components/AdminDialog";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { usePlayer } from "@/context/PlayerContext";
+import { setCueboxSessionCookie } from "@/lib/audio";
 
 export function Login() {
   const [username, setUsername] = useState("");
@@ -21,14 +23,15 @@ export function Login() {
   const [noticeChecked, setNoticeChecked] = useState(false);
   const [noticeAccepted, setNoticeAccepted] = useState(false);
   const [, setLocation] = useLocation();
+  const { resetPlayer } = usePlayer();
 
   useEffect(() => {
-    // If a session is already active, go straight to the project
+    resetPlayer();
     const session = localStorage.getItem("cuebox_session");
     if (session) {
       setLocation("/project");
     }
-  }, [setLocation]);
+  }, [resetPlayer, setLocation]);
 
   useEffect(() => {
     const accepted = localStorage.getItem("cuebox_confidentiality_accepted") === "true";
@@ -88,10 +91,9 @@ export function Login() {
       const projectDoc = snapshot.docs[0];
 
       // Store only the project ID as the session — all data comes from Firestore
-      localStorage.setItem(
-        "cuebox_session",
-        JSON.stringify({ projectId: projectDoc.id })
-      );
+      const sessionPayload = { projectId: projectDoc.id };
+      localStorage.setItem("cuebox_session", JSON.stringify(sessionPayload));
+      setCueboxSessionCookie(projectDoc.id);
       setLocation("/project");
     } catch (err) {
       console.error("Login error:", err);
@@ -195,16 +197,16 @@ export function Login() {
 
       <AdminDialog open={adminOpen} onOpenChange={setAdminOpen} />
 
-      <Dialog open={noticeOpen} onOpenChange={(open) => { if (!open && noticeAccepted) setNoticeOpen(false); }}>
-        <DialogContent className="glass-panel border-white/20 max-w-3xl max-h-[85vh] overflow-hidden">
-          <DialogHeader>
-            <DialogTitle className="text-2xl font-bold">Confidentiality Notice</DialogTitle>
+      <Dialog open={noticeOpen} onOpenChange={setNoticeOpen}>
+        <DialogContent className="glass-panel border-border/70 bg-card/95 text-card-foreground w-[calc(100%-1rem)] sm:max-w-3xl max-h-[92dvh] p-0 overflow-hidden flex flex-col">
+          <DialogHeader className="px-4 sm:px-6 pt-5 pb-3">
+            <DialogTitle className="text-xl sm:text-2xl font-bold">Confidentiality Notice</DialogTitle>
             <DialogDescription className="text-sm text-muted-foreground">
               Read and agree to continue into the preview portal.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="overflow-y-auto max-h-[60vh] space-y-4 mt-4 text-sm text-muted-foreground px-1">
+          <div className="overflow-y-auto px-4 sm:px-6 py-2 space-y-4 text-sm text-muted-foreground">
             <p className="font-semibold">Welcome to JAYMELO CUEBOX</p>
             <p>
               The music, audio recordings, compositions, arrangements, sound designs, and all related materials available on this portal are the exclusive intellectual property of <strong>Mr. Harsha Jayanth</strong> and are shared privately under <strong>JAYMELO Productions</strong> solely for review and evaluation purposes.
@@ -231,22 +233,22 @@ export function Login() {
             <p className="font-semibold">Music composed and produced by Harsha Jayanth.</p>
           </div>
 
-          <div className="p-4 border-t border-border/20">
+          <div className="sticky bottom-0 border-t border-border/20 bg-background/90 backdrop-blur px-4 sm:px-6 py-4">
             <div className="flex items-start gap-3">
               <Checkbox
                 id="confidentiality-accept"
                 checked={noticeChecked}
                 onCheckedChange={(checked) => setNoticeChecked(Boolean(checked))}
               />
-              <label htmlFor="confidentiality-accept" className="text-sm text-foreground">
+              <label htmlFor="confidentiality-accept" className="text-sm text-foreground leading-6">
                 I have read and agree to the Confidentiality Notice. I understand that these materials are confidential and will not be copied, recorded, downloaded, or shared with any unauthorized person.
               </label>
             </div>
-            <div className="mt-4 flex justify-end gap-3">
+            <div className="mt-4 flex justify-end">
               <Button
                 onClick={handleAcceptNotice}
                 disabled={!noticeChecked}
-                className="bg-primary text-primary-foreground"
+                className="w-full sm:w-auto bg-primary text-primary-foreground"
               >
                 Agree and continue
               </Button>

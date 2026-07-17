@@ -1,6 +1,6 @@
 // ProjectEditorDialog — Ctrl+Shift+E
 // All metadata writes to Firebase Firestore in real-time.
-// Audio files are served from public/tunes/{folder}/{filename}.
+// Audio files are served from public/tunes/{filename}.
 import { useState } from "react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
@@ -115,7 +115,7 @@ export function ProjectEditorDialog({
     setDeletingTrack((p) => ({ ...p, [track.id]: true }));
     try {
       // Only Firestore metadata can be removed from the browser.
-      // The actual MP3 file in public/tunes/{project.folder}/ must be removed manually.
+      // The actual MP3 file in public/tunes/ must be removed manually.
       await deleteDoc(doc(db, "projects", project.id, "tracks", track.id));
       setDeleteConfirm(null);
     } catch (err: any) {
@@ -163,7 +163,7 @@ export function ProjectEditorDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
-        className="glass-panel border-white/20 max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+        className="glass-panel border-border/70 bg-card/95 text-card-foreground max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col"
         onContextMenu={(e) => e.stopPropagation()}
       >
         <DialogHeader className="shrink-0">
@@ -174,7 +174,7 @@ export function ProjectEditorDialog({
             </span>
           </DialogTitle>
           <DialogDescription className="text-sm text-muted-foreground">
-            Project metadata is stored in Firestore. Put the MP3 file in public/tunes/{project.folder}/.
+            Project metadata is stored in Firestore. Put the MP3 file in public/tunes/.
           </DialogDescription>
         </DialogHeader>
 
@@ -345,12 +345,12 @@ export function ProjectEditorDialog({
                 <p className="text-xs text-muted-foreground font-mono pl-1">
                   📁 {newFile}{" "}
                   <span className="text-muted-foreground/50">
-                    → public/tunes/{project.folder}/
+                    → public/tunes/
                   </span>
                 </p>
               ) : (
                 <p className="text-xs text-muted-foreground pl-1">
-                  Choose an MP3 file and then place it in public/tunes/{project.folder}/.
+                  Choose an MP3 file and then place it in public/tunes/.
                 </p>
               )}
 
@@ -391,7 +391,7 @@ export function ProjectEditorDialog({
           <div className="flex items-start gap-2 text-xs text-muted-foreground bg-black/5 dark:bg-white/5 rounded-lg p-3">
             <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0 text-primary" />
             <span>
-              Pick an MP3 here to select the filename. Then place the actual file in public/tunes/{project.folder}/. If you delete a track, remove the corresponding audio file manually from the public folder.
+              Pick an MP3 here to select the filename. Then place the actual file in public/tunes/. If you delete a track, remove the corresponding audio file manually from the public folder.
             </span>
           </div>
         </div>

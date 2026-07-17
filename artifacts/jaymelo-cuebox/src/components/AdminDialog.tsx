@@ -29,7 +29,7 @@ export function AdminDialog({ open, onOpenChange }: AdminDialogProps) {
   const [projectName, setProjectName] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [folder, setFolder] = useState("");
+  const [folder, setFolder] = useState("shared");
   const [trackEntries, setTrackEntries] = useState<TrackEntry[]>([]);
   const [status, setStatus] = useState<"idle" | "saving" | "done" | "error">("idle");
   const [createdId, setCreatedId] = useState("");
@@ -111,7 +111,7 @@ export function AdminDialog({ open, onOpenChange }: AdminDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="glass-panel border-white/20 sm:max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+      <DialogContent className="glass-panel border-border/70 bg-card/95 text-card-foreground sm:max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
         <DialogHeader className="shrink-0">
           <DialogTitle className="text-xl tracking-tight flex items-center gap-2">
             Create New Project
@@ -133,7 +133,7 @@ export function AdminDialog({ open, onOpenChange }: AdminDialogProps) {
                 Project ID: <code className="text-primary bg-black/10 dark:bg-white/10 px-2 py-0.5 rounded text-xs font-mono">{createdId}</code>
               </p>
               <p className="text-sm text-muted-foreground">
-                Audio files should be placed in <code className="text-primary bg-black/10 dark:bg-white/10 px-2 py-0.5 rounded text-xs font-mono">public/tunes/{folder}/</code>.
+                Audio files should be placed in <code className="text-primary bg-black/10 dark:bg-white/10 px-2 py-0.5 rounded text-xs font-mono">public/tunes/</code>.
               </p>
               <div className="flex gap-3 justify-center mt-4">
                 <Button variant="outline" onClick={handleReset}>Create Another</Button>
@@ -173,20 +173,21 @@ export function AdminDialog({ open, onOpenChange }: AdminDialogProps) {
                 </div>
                 <div className="col-span-2 space-y-1.5">
                   <Label className="text-xs uppercase tracking-widest text-muted-foreground">
-                    Audio Folder <span className="text-muted-foreground/60">(public/tunes/…)</span>
+                    Audio Folder <span className="text-muted-foreground/60">(shared)</span>
                   </Label>
                   <Input
                     value={folder}
                     onChange={(e) => setFolder(e.target.value)}
-                    placeholder="my-film-score"
+                    placeholder="shared"
                     className="bg-black/5 dark:bg-white/5 border-transparent focus-visible:ring-primary font-mono text-sm"
+                    readOnly
                   />
                 </div>
               </div>
 
               <div className="space-y-2">
                 <Label className="text-xs uppercase tracking-widest text-muted-foreground">
-                  Pick MP3 Files <span className="text-muted-foreground/60">(filename only; place files at public/tunes/{folder}/)</span>
+                  Pick MP3 Files <span className="text-muted-foreground/60">(filename only; place files in public/tunes/)</span>
                 </Label>
                 <Input
                   type="file"

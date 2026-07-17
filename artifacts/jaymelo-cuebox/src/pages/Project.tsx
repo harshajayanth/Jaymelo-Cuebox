@@ -5,13 +5,13 @@ import { Header } from "@/components/Header";
 import { MusicCard } from "@/components/MusicCard";
 import { AdminDialog } from "@/components/AdminDialog";
 import { ProjectEditorDialog } from "@/components/ProjectEditorDialog";
-import { MiniPlayer } from "@/components/MiniPlayer";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Search, Clock, ArrowDownAZ, ArrowUpZA, Loader2, WifiOff } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { usePlayer } from "@/context/PlayerContext";
 import { useFirestoreProject } from "@/hooks/useFirestoreProject";
+import { clearCueboxSession, fetchTrackAsset } from "@/lib/audio";
 
 type SortMode = "none" | "az" | "za" | "recent";
 
@@ -23,7 +23,7 @@ export function ProjectPage() {
   const [adminOpen, setAdminOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
 
-  const { currentTrack, updateTracks } = usePlayer();
+  const { currentTrack, updateTracks, resetPlayer } = usePlayer();
   const pendingShortcutRef = useRef(false);
   const [localTrackAvailability, setLocalTrackAvailability] = useState<Record<string, boolean>>({});
   const [availabilityChecked, setAvailabilityChecked] = useState(false);
@@ -39,11 +39,9 @@ export function ProjectPage() {
     const checkFiles = async () => {
       const results = await Promise.all(
         tracks.map(async (track) => {
-          const url = `/tunes/${project.folder}/${encodeURIComponent(track.file)}`;
-          console.log(url)
           try {
-            const response = await fetch(url, { method: "HEAD" });
-            return [track.id, response.ok] as const;
+            const asset = await fetchTrackAsset(track, project, { method: "HEAD" });
+            return [track.id, Boolean(asset?.response?.ok)] as const;
           } catch {
             return [track.id, false] as const;
           }
@@ -63,17 +61,15 @@ export function ProjectPage() {
 
   const visibleTracks = availabilityChecked
     ? tracks.filter((track) => localTrackAvailability[track.id] !== false)
-    : [];
+    : tracks;
   const missingTrackCount = availabilityChecked
     ? tracks.filter((track) => localTrackAvailability[track.id] === false).length
     : 0;
 
-  // Keep the player's internal tracklist in sync with available local files
   useEffect(() => {
     updateTracks(visibleTracks);
   }, [visibleTracks, updateTracks]);
 
-  // Read session on mount
   useEffect(() => {
     const session = localStorage.getItem("cuebox_session");
     if (!session) {
@@ -85,12 +81,11 @@ export function ProjectPage() {
       if (!id) throw new Error("No projectId");
       setProjectId(id);
     } catch {
-      localStorage.removeItem("cuebox_session");
+      clearCueboxSession();
       setLocation("/");
     }
   }, [setLocation]);
 
-  // Keyboard shortcuts
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (
       e.target instanceof HTMLInputElement ||
@@ -135,11 +130,11 @@ export function ProjectPage() {
   }, [handleKeyDown, clearPendingShortcut]);
 
   const handleSignOut = () => {
-    localStorage.removeItem("cuebox_session");
+    resetPlayer();
+    clearCueboxSession();
     setLocation("/");
   };
 
-  // ── Loading / error states ───────────────────────────────────────────────
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background gap-3 text-muted-foreground">
@@ -161,7 +156,6 @@ export function ProjectPage() {
     );
   }
 
-  // ── Filter + sort ────────────────────────────────────────────────────────
   let displayTracks: Track[] = visibleTracks.filter((t) =>
     t.title.toLowerCase().includes(search.toLowerCase())
   );
@@ -194,7 +188,6 @@ export function ProjectPage() {
       />
 
       <main className="container mx-auto px-4 py-8 relative z-10">
-        {/* Controls */}
         <div className="flex flex-col sm:flex-row gap-4 justify-between items-center mb-10 bg-black/5 dark:bg-white/5 p-2 rounded-xl backdrop-blur-md border border-white/10">
           <div className="relative w-full sm:w-96">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -223,14 +216,13 @@ export function ProjectPage() {
           </div>
         </div>
 
-        {/* Track grid */}
         <AnimatePresence mode="wait">
           {missingTrackCount > 0 && (
-          <div className="mb-6 rounded-2xl border border-yellow-300/30 bg-yellow-100/10 p-4 text-sm text-yellow-900 dark:bg-yellow-500/10 dark:text-yellow-200">
-            {missingTrackCount} track{missingTrackCount === 1 ? " is" : "s are"} referenced in Firestore but not found in <code className="font-mono">public/tunes/{project.folder}/</code>. Only available tracks are shown.
-          </div>
-        )}
-        {displayTracks.length === 0 ? (
+            <div className="mb-6 rounded-2xl border border-yellow-300/30 bg-yellow-100/10 p-4 text-sm text-yellow-900 dark:bg-yellow-500/10 dark:text-yellow-200">
+              {missingTrackCount} track{missingTrackCount === 1 ? " is" : "s are"} referenced in Firestore but not found in local. Only available tracks are shown.
+            </div>
+          )}
+          {displayTracks.length === 0 ? (
             <motion.div
               key="empty"
               initial={{ opacity: 0 }}
@@ -242,9 +234,8 @@ export function ProjectPage() {
                 {tracks.length === 0
                   ? "No tracks yet. Add one from the editor."
                   : missingTrackCount === tracks.length
-                  ? "No audio files are available locally. Place MP3s in public/tunes/{project.folder}/."
-                  : "No tracks match your search."
-                }
+                  ? "No audio files are available locally. Place MP3s Locally."
+                  : "No tracks match your search."}
               </p>
             </motion.div>
           ) : (
@@ -267,8 +258,6 @@ export function ProjectPage() {
           )}
         </AnimatePresence>
       </main>
-
-      <MiniPlayer />
 
       <AdminDialog open={adminOpen} onOpenChange={setAdminOpen} />
       {project && (

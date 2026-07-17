@@ -4,6 +4,7 @@ import { Play, Pause, Download } from "lucide-react";
 import { motion } from "framer-motion";
 import { CommentDialog } from "./CommentDialog";
 import { usePlayer } from "@/context/PlayerContext";
+import { fetchTrackAsset } from "@/lib/audio";
 
 interface MusicCardProps {
   track: Track;
@@ -38,17 +39,26 @@ export function MusicCard({ track, project, index }: MusicCardProps) {
     else play(track, project);
   };
 
-  const handleDownload = (e: React.MouseEvent) => {
+  const handleDownload = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (isDisabled || !track.downloadable) return;
 
-    const url = `/tunes/${project.folder}/${encodeURIComponent(track.file)}`;
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = track.file;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    try {
+      const asset = await fetchTrackAsset(track, project, { method: "GET" });
+      if (!asset?.response.ok) return;
+
+      const blob = await asset.response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = track.file;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+      console.error("Download error", error);
+    }
   };
 
   const formatTime = (s: number) => {
@@ -78,7 +88,6 @@ export function MusicCard({ track, project, index }: MusicCardProps) {
       onContextMenu={(e) => e.preventDefault()}
       onDragStart={(e) => e.preventDefault()}
     >
-      {/* Active glow */}
       {isActive && isPlaying && (
         <motion.div
           className="absolute inset-0 bg-primary/5 dark:bg-primary/10 pointer-events-none"
@@ -88,7 +97,6 @@ export function MusicCard({ track, project, index }: MusicCardProps) {
       )}
 
       <div className="p-4 flex gap-4 h-full relative z-10">
-        {/* Artwork */}
         <div className={`w-24 h-24 sm:w-32 sm:h-32 rounded-xl flex-shrink-0 bg-gradient-to-br ${gradient}
           flex items-center justify-center shadow-inner relative overflow-hidden
           group-hover:scale-[1.02] transition-transform duration-500`}
@@ -120,7 +128,6 @@ export function MusicCard({ track, project, index }: MusicCardProps) {
           )}
         </div>
 
-        {/* Content */}
         <div className="flex-1 flex flex-col justify-between py-1 min-w-0">
           <div>
             <h3 className="text-lg sm:text-xl font-bold tracking-tight truncate pr-2 text-foreground/90 group-hover:text-foreground transition-colors">

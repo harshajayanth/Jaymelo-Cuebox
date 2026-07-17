@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { Track, Project } from '@/types';
+import { createSecureAudioSource } from '@/lib/audio';
 
 interface PlayerContextState {
   currentTrack: Track | null;
@@ -16,6 +17,7 @@ interface PlayerContextState {
   setVolume: (vol: number) => void;
   playNext: () => void;
   playPrev: () => void;
+  resetPlayer: () => void;
   /** Call this whenever Firestore delivers a fresh tracks list */
   updateTracks: (tracks: Track[]) => void;
 }
@@ -29,45 +31,88 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  
+
   const [volume, _setVolume] = useState(() => {
     const saved = localStorage.getItem('cuebox_volume');
     return saved ? parseFloat(saved) : 1;
   });
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const objectUrlRef = useRef<string | null>(null);
   const stateRef = useRef({ currentTrack, currentProject, allTracks });
 
   useEffect(() => {
     stateRef.current = { currentTrack, currentProject, allTracks };
   }, [currentTrack, currentProject, allTracks]);
 
+  const clearAudioSource = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = '';
+    }
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
+    }
+  };
+
+  const resetPlayer = () => {
+    clearAudioSource();
+    setCurrentTrack(null);
+    setCurrentProject(null);
+    setIsPlaying(false);
+    setCurrentTime(0);
+    setDuration(0);
+  };
+
   const updateTracks = (tracks: Track[]) => {
     setAllTracks(tracks);
 
     if (currentTrack && !tracks.some((t) => t.file === currentTrack.file)) {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.src = "";
-      }
-      setCurrentTrack(null);
-      setCurrentProject(null);
-      setIsPlaying(false);
-      setCurrentTime(0);
-      setDuration(0);
+      resetPlayer();
     }
   };
 
   useEffect(() => {
     const audio = new Audio();
     audioRef.current = audio;
-    
+
     audio.addEventListener('contextmenu', (e) => e.preventDefault());
-    
+
     return () => {
+      clearAudioSource();
       audio.pause();
       audio.src = '';
     };
+  }, []);
+
+  useEffect(() => {
+    const syncSession = () => {
+      const session = localStorage.getItem('cuebox_session');
+      if (!session) {
+        resetPlayer();
+        return;
+      }
+
+      try {
+        const { projectId } = JSON.parse(session);
+        if (!projectId) {
+          resetPlayer();
+        }
+      } catch {
+        resetPlayer();
+      }
+    };
+
+    syncSession();
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === 'cuebox_session') {
+        syncSession();
+      }
+    };
+
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
   }, []);
 
   const playNext = () => {
@@ -101,8 +146,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     };
     const handlePlay = () => setIsPlaying(true);
     const handlePause = () => setIsPlaying(false);
-    
-    // Add event listeners for metadata loaded
+
     const handleLoadedMetadata = () => {
       setDuration(audio.duration);
     };
@@ -122,7 +166,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       audio.removeEventListener('play', handlePlay);
       audio.removeEventListener('pause', handlePause);
     };
-  }, []); // bind once, playNext uses ref inside
+  }, []);
 
   const playPrev = () => {
     const { currentTrack: track, currentProject: project, allTracks: tracklist } = stateRef.current;
@@ -130,7 +174,6 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     const idx = tracklist.findIndex(t => t.file === track.file);
 
     if (audioRef.current && audioRef.current.currentTime > 3) {
-      // If playing for more than 3 seconds, restart the current track
       audioRef.current.currentTime = 0;
       return;
     }
@@ -157,16 +200,31 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     if (!audio) return;
     if (track.disabled) return;
 
-    if (currentTrack?.file !== track.file || currentProject?.folder !== project.folder) {
+    if (currentTrack?.file !== track.file || currentProject?.id !== project.id) {
       setCurrentTrack(track);
       setCurrentProject(project);
 
-      const url = `/tunes/${project.folder}/${encodeURIComponent(track.file)}`;
-      audio.src = url;
-      audio.load();
+      try {
+        const objectUrl = await createSecureAudioSource(track, project);
+        if (objectUrlRef.current) {
+          URL.revokeObjectURL(objectUrlRef.current);
+        }
+        objectUrlRef.current = objectUrl;
+        audio.src = objectUrl;
+        audio.load();
+        await audio.play();
+        return;
+      } catch (error) {
+        console.error('Playback error', error);
+        resetPlayer();
+        return;
+      }
     }
 
-    audio.play().catch((e) => console.error('Playback error', e));
+    audio.play().catch((error) => {
+      console.error('Playback error', error);
+      resetPlayer();
+    });
   };
 
   const pause = () => {
@@ -249,6 +307,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         setVolume,
         playNext,
         playPrev,
+        resetPlayer,
         updateTracks,
       }}
     >
