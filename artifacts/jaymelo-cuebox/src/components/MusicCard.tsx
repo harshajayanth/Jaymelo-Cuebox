@@ -1,6 +1,6 @@
 import { Track, Project } from "@/types";
 import { Button } from "@/components/ui/button";
-import { Play, Pause, Download } from "lucide-react";
+import { Play, Pause, Download, Loader2, AlertCircle } from "lucide-react";
 import { motion } from "framer-motion";
 import { CommentDialog } from "./CommentDialog";
 import { usePlayer } from "@/context/PlayerContext";
@@ -25,16 +25,18 @@ const GRADIENTS = [
 
 export function MusicCard({ track, project, index }: MusicCardProps) {
   const {
-    currentTrack, isPlaying, play, togglePlay, currentTime, duration, seekTo,
+    currentTrack, isPlaying, isLoading, loadProgress, playbackError,
+    play, togglePlay, currentTime, duration, seekTo,
   } = usePlayer();
 
   const isActive = currentTrack?.file === track.file;
   const isDisabled = track.disabled;
+  const isTrackLoading = isActive && isLoading;
   const gradient = GRADIENTS[index % GRADIENTS.length];
 
   const handlePlayClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (isDisabled) return;
+    if (isDisabled || isTrackLoading) return;
     if (isActive) togglePlay();
     else play(track, project);
   };
@@ -84,7 +86,7 @@ export function MusicCard({ track, project, index }: MusicCardProps) {
         }
         ${isActive ? "ring-1 ring-primary border-primary/50" : ""}
       `}
-      onClick={() => { if (!isDisabled && !isActive) play(track, project); }}
+      onClick={() => { if (!isDisabled && !isTrackLoading && !isActive) play(track, project); }}
       onContextMenu={(e) => e.preventDefault()}
       onDragStart={(e) => e.preventDefault()}
     >
@@ -106,13 +108,17 @@ export function MusicCard({ track, project, index }: MusicCardProps) {
           {!isDisabled && (
             <button
               onClick={handlePlayClick}
+              disabled={isTrackLoading}
+              aria-label={isTrackLoading ? "Loading track" : isPlaying && isActive ? "Pause track" : "Play track"}
               className={`w-12 h-12 rounded-full flex items-center justify-center transition-all
                 ${isActive
                   ? "bg-primary text-white shadow-lg shadow-primary/40 scale-110"
                   : "bg-black/30 text-white hover:bg-black/50 hover:scale-110 backdrop-blur-sm"
                 }`}
             >
-              {isActive && isPlaying
+              {isTrackLoading
+                ? <Loader2 className="w-5 h-5 animate-spin" />
+                : isActive && isPlaying
                 ? <Pause className="w-5 h-5 fill-current" />
                 : <Play className="w-5 h-5 fill-current ml-1" />
               }
@@ -138,6 +144,17 @@ export function MusicCard({ track, project, index }: MusicCardProps) {
                 Work in Progress
               </p>
             )}
+            {isTrackLoading && (
+              <p className="text-xs font-medium text-primary mt-1 flex items-center gap-1.5" role="status">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                {loadProgress === null ? "Loading full track…" : `Loading full track… ${loadProgress}%`}
+              </p>
+            )}
+            {isActive && playbackError && !isTrackLoading && (
+              <p className="text-xs font-medium text-destructive mt-1 flex items-center gap-1.5" role="alert">
+                <AlertCircle className="w-3.5 h-3.5" /> {playbackError}
+              </p>
+            )}
           </div>
 
           <div className="flex items-end justify-between mt-4">
@@ -146,6 +163,7 @@ export function MusicCard({ track, project, index }: MusicCardProps) {
                 className={`h-2 rounded-full bg-black/5 dark:bg-white/10 overflow-hidden cursor-pointer
                   relative transition-opacity duration-300 ${isActive ? "opacity-100" : "opacity-0"}`}
                 onClick={handleSeek}
+                aria-disabled={isTrackLoading}
               >
                 <div className="h-full bg-primary relative" style={{ width: `${progressPercent}%` }}>
                   <div className="absolute right-0 top-0 bottom-0 w-2 bg-white/50 blur-[2px]" />

@@ -7,6 +7,9 @@ interface PlayerContextState {
   currentProject: Project | null;
   allTracks: Track[];
   isPlaying: boolean;
+  isLoading: boolean;
+  loadProgress: number | null;
+  playbackError: string | null;
   currentTime: number;
   duration: number;
   volume: number;
@@ -29,6 +32,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
   const [allTracks, setAllTracks] = useState<Track[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadProgress, setLoadProgress] = useState<number | null>(null);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
 
@@ -39,6 +45,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const objectUrlRef = useRef<string | null>(null);
+  const loadRequestRef = useRef(0);
   const stateRef = useRef({ currentTrack, currentProject, allTracks });
 
   useEffect(() => {
@@ -57,12 +64,16 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   };
 
   const resetPlayer = () => {
+    loadRequestRef.current += 1;
     clearAudioSource();
     setCurrentTrack(null);
     setCurrentProject(null);
     setIsPlaying(false);
     setCurrentTime(0);
     setDuration(0);
+    setIsLoading(false);
+    setLoadProgress(null);
+    setPlaybackError(null);
   };
 
   const updateTracks = (tracks: Track[]) => {
@@ -199,24 +210,48 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     const audio = audioRef.current;
     if (!audio) return;
     if (track.disabled) return;
+    if (isLoading && currentTrack?.file === track.file && currentProject?.id === project.id) return;
 
-    if (currentTrack?.file !== track.file || currentProject?.id !== project.id) {
+    if (
+      currentTrack?.file !== track.file ||
+      currentProject?.id !== project.id ||
+      !objectUrlRef.current ||
+      playbackError
+    ) {
+      const requestId = ++loadRequestRef.current;
       setCurrentTrack(track);
       setCurrentProject(project);
+      setIsPlaying(false);
+      setIsLoading(true);
+      setLoadProgress(0);
+      setPlaybackError(null);
+      clearAudioSource();
 
       try {
-        const objectUrl = await createSecureAudioSource(track, project);
+        const objectUrl = await createSecureAudioSource(track, project, (progress) => {
+          if (loadRequestRef.current === requestId) setLoadProgress(progress);
+        });
+        if (loadRequestRef.current !== requestId) {
+          URL.revokeObjectURL(objectUrl);
+          return;
+        }
         if (objectUrlRef.current) {
           URL.revokeObjectURL(objectUrlRef.current);
         }
         objectUrlRef.current = objectUrl;
         audio.src = objectUrl;
         audio.load();
+        setIsLoading(false);
+        setLoadProgress(100);
         await audio.play();
         return;
       } catch (error) {
+        if (loadRequestRef.current !== requestId) return;
         console.error('Playback error', error);
-        resetPlayer();
+        clearAudioSource();
+        setIsLoading(false);
+        setLoadProgress(null);
+        setPlaybackError('Track could not be loaded. Please try again.');
         return;
       }
     }
@@ -232,6 +267,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   };
 
   const togglePlay = () => {
+    if (isLoading) return;
     if (isPlaying) {
       pause();
     } else if (currentTrack && currentProject) {
@@ -297,6 +333,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         currentProject,
         allTracks,
         isPlaying,
+        isLoading,
+        loadProgress,
+        playbackError,
         currentTime,
         duration,
         volume,

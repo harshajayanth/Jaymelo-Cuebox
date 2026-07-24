@@ -8,10 +8,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AdminDialog } from "@/components/AdminDialog";
-import { collection, query, where, getDocs } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import { usePlayer } from "@/context/PlayerContext";
 import { setCueboxSessionCookie } from "@/lib/audio";
+import { collection, query, where, getDocs } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 export function Login() {
   const [username, setUsername] = useState("");
@@ -73,27 +73,16 @@ export function Login() {
     setIsLoading(true);
 
     try {
-      // Query Firestore for a project matching username + password.
-      // Two equality where-clauses: no composite index required.
-      const q = query(
-        collection(db, "projects"),
-        where("username", "==", username.trim()),
-        where("password", "==", password)
-      );
-
+      const q = query(collection(db, "projects"), where("username", "==", username.trim()), where("password", "==", password));
       const snapshot = await getDocs(q);
-
       if (snapshot.empty) {
         setError("Invalid credentials. Please try again.");
         return;
       }
-
-      const projectDoc = snapshot.docs[0];
-
-      // Store only the project ID as the session — all data comes from Firestore
-      const sessionPayload = { projectId: projectDoc.id };
+      const projectId = snapshot.docs[0].id;
+      const sessionPayload = { projectId };
       localStorage.setItem("cuebox_session", JSON.stringify(sessionPayload));
-      setCueboxSessionCookie(projectDoc.id);
+      setCueboxSessionCookie(projectId);
       setLocation("/project");
     } catch (err) {
       console.error("Login error:", err);

@@ -1,5 +1,5 @@
 import { usePlayer } from "@/context/PlayerContext";
-import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX } from "lucide-react";
+import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Loader2 } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -9,6 +9,8 @@ export function MiniPlayer() {
     currentProject,
     allTracks,
     isPlaying,
+    isLoading,
+    loadProgress,
     currentTime,
     duration,
     volume,
@@ -68,6 +70,7 @@ export function MiniPlayer() {
               max={100}
               step={0.1}
               onValueChange={([value]) => seekTo((value / 100) * duration)}
+              disabled={isLoading}
               className="w-full"
             />
             <div className="flex justify-between text-[10px] text-muted-foreground mt-2 px-1">
@@ -84,6 +87,11 @@ export function MiniPlayer() {
             <div className="truncate">
               <h4 className="font-bold text-sm tracking-tight truncate">{currentTrack.title}</h4>
               <p className="text-xs text-muted-foreground truncate">{currentProject.projectName}</p>
+              {isLoading && (
+                <p className="text-[10px] text-primary truncate" role="status">
+                  {loadProgress === null ? "Loading full track…" : `Loading… ${loadProgress}%`}
+                </p>
+              )}
             </div>
           </div>
 
@@ -92,6 +100,7 @@ export function MiniPlayer() {
             <div className="flex items-center gap-6">
               <button 
                 onClick={playPrev}
+                disabled={isLoading}
                 className="text-muted-foreground hover:text-foreground transition-colors p-1"
               >
                 <SkipBack className="w-5 h-5 fill-current" />
@@ -99,9 +108,12 @@ export function MiniPlayer() {
               
               <button 
                 onClick={togglePlay}
+                disabled={isLoading}
                 className="w-10 h-10 rounded-full bg-foreground text-background flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-md"
               >
-                {isPlaying ? (
+                {isLoading ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : isPlaying ? (
                   <Pause className="w-5 h-5 fill-current" />
                 ) : (
                   <Play className="w-5 h-5 fill-current ml-0.5" />
@@ -110,6 +122,7 @@ export function MiniPlayer() {
               
               <button 
                 onClick={playNext}
+                disabled={isLoading}
                 className="text-muted-foreground hover:text-foreground transition-colors p-1"
               >
                 <SkipForward className="w-5 h-5 fill-current" />

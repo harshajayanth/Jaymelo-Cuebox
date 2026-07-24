@@ -47,7 +47,6 @@ export function getTrackAssetCandidates(track: Pick<Track, 'file'>, project?: Pi
   const encodedFile = encodeURIComponent(track.file);
   const sharedPath = `/tunes/${encodedFile}`;
   const legacyPath = project?.folder ? `/tunes/${encodeURIComponent(project.folder)}/${encodedFile}` : null;
-
   return [sharedPath, ...(legacyPath ? [legacyPath] : [])];
 }
 
@@ -82,12 +81,41 @@ export async function fetchTrackAsset(
   return null;
 }
 
-export async function createSecureAudioSource(track: Pick<Track, 'file'>, project?: Pick<Project, 'folder' | 'id'> | null) {
+export async function createSecureAudioSource(
+  track: Pick<Track, 'file'>,
+  project?: Pick<Project, 'folder' | 'id'> | null,
+  onProgress?: (progress: number | null) => void,
+) {
   const asset = await fetchTrackAsset(track, project, { method: 'GET' });
   if (!asset?.response) {
     throw new Error('Audio not available');
   }
 
-  const blob = await asset.response.blob();
+  const contentLength = Number(asset.response.headers.get('content-length'));
+  const total = Number.isFinite(contentLength) && contentLength > 0 ? contentLength : null;
+  const reader = asset.response.body?.getReader();
+
+  if (!reader) {
+    const blob = await asset.response.blob();
+    onProgress?.(100);
+    return URL.createObjectURL(blob);
+  }
+
+  const chunks: ArrayBuffer[] = [];
+  let received = 0;
+  onProgress?.(total ? 0 : null);
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value.slice().buffer as ArrayBuffer);
+    received += value.byteLength;
+    onProgress?.(total ? Math.min(99, Math.round((received / total) * 100)) : null);
+  }
+
+  const blob = new Blob(chunks, {
+    type: asset.response.headers.get('content-type') || 'audio/mpeg',
+  });
+  onProgress?.(100);
   return URL.createObjectURL(blob);
 }
